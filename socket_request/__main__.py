@@ -75,18 +75,28 @@ class ConnectSock:
             "Content-Type": "application/x-www-form-urlencoded"
         }
         self.Response = ResponseField()
+        self.sock = None
+        self.debug = debug
+        self._initialize_vars()
 
+        if debug:
+            self.about = {}
+            here = os.path.abspath(os.path.dirname(__file__))
+            with open(os.path.join(here, '__version__.py'), mode='r', encoding='utf-8') as f:
+                exec(f.read(), self.about)
+            # print(f"{self.about['__title__']} v{self.about['__version__']}")
+
+    def _initialize_vars(self):
         self.r_headers = []
         self.r_headers_string = ""
         self.r_body = []
         self.r_body_string = ""
-
         self.return_merged_values = {}
-
-        self.sock = None
-        self.debug = debug
+        self.state = {}
         self.payload = {}
         self.files = {}
+        self.detail = False
+        self.inspect = False
 
     def _connect_sock(self):
         if self.unix_socket and os.path.exists(self.unix_socket):
@@ -300,7 +310,9 @@ class ConnectSock:
 
     def debug_print(self, text, color="blue"):
         if self.debug:
-            color_print(f"[DBG] {text}", color)
+            # version_info = f"{self.about['__title__']} v{self.about['__version__']}"
+            version_info = f"v{self.about['__version__']}"
+            color_print(f"[{version_info}][DBG] {text}", color)
 
     def debug_resp_print(self, result):
         if self.debug:
@@ -313,15 +325,16 @@ class ConnectSock:
                     debug(result.text)
             else:
                 color = "fail"
-            color_print(f"[DBG] status_code={result.status_code} url={self.url}, payload={self.payload}, payload={self.files}, result={text[0]}", color)
+            self.debug_print(f"status_code={result.status_code} url={self.url}, payload={self.payload}, payload={self.files}, result={text[0]}", color)
 
 
 class ControlChain(ConnectSock):
     success_state = {
-        "backup": "backup done"
+        "backup": "backup done",
+        "restore": "success"
     }
 
-    def __init__(self, unix_socket="cli.sock", url="/", cid=None, timeout=5, debug=False, auto_prepare=True, wait_state=True):
+    def __init__(self, unix_socket="cli.sock", url="/", cid=None, timeout=5, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
         """
         ChainControl class init
 
@@ -352,6 +365,7 @@ class ControlChain(ConnectSock):
         self.wait_state = wait_state
         self.state = {}
         self.gs_file = None
+        self.increase_sec = increase_sec
 
         if self.cid is None:
             self.debug_print("cid not found. Guess it will get the cid.")
@@ -368,11 +382,17 @@ class ControlChain(ConnectSock):
                 self.stop(*args, **kwargs)
                 ret = func(self, *args, **kwargs)
                 func_name = func.__name__
+                if func_name == "restore":
+                    exec_function = self.get_restore_status
+                else:
+                    exec_function = self.view_chain
+
                 if self.wait_state and self.success_state.get(func_name):
                     wait_state_loop(
-                        exec_function=self.view_chain,
+                        exec_function=exec_function,
                         check_key="state",
                         wait_state=self.success_state.get(func_name),
+                        increase_sec=self.increase_sec,
                         description=f"'{func_name}'")
                 self.start(*args, **kwargs)
             else:
@@ -380,13 +400,19 @@ class ControlChain(ConnectSock):
             return ret
         return stop_start
 
+
+    def get_restore_status(self):
+        return self.request(url="/system/restore",  method="GET", return_dict=True)
+
+
     def _decorator_kwargs_checker(check_mandatory=True):
         def real_deco(func):
             @wraps(func)
             def from_kwargs(self, *args, **kwargs):
                 func_name = func.__name__
-                if func_name != "stop_start" and self.debug:
-                    color_print(f"['{func_name}'] Start function ", "WHITE")
+                if func_name != "stop_start":
+                    self.debug_print(f"Start '{func_name}' function", "WHITE")
+                    # color_print(f"['{func_name}'] Start function ", "WHITE")
                 # defined default value for function
 
                 if check_mandatory is not True:
@@ -539,8 +565,12 @@ class ControlChain(ConnectSock):
         res = self.request(url=f"/chain/{self.cid}/configure", payload=payload,  method="POST")
         return res
 
-    def view_system_config(self):
-        res = self.request(url="/system/configure",  method="GET")
+    def view_system_config(self, detail=True):
+        if detail:
+            url = "/system"
+        else:
+            url = "/system/configure"
+        res = self.request(url=url,  method="GET")
         return res
 
     @_decorator_kwargs_checker

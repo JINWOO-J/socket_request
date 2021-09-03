@@ -1,5 +1,5 @@
 
---build-arg BUILD_DATE=2021-08-31T07:43:28UTC  
+--build-arg BUILD_DATE=2021-09-01T02:27:41UTC  
 --build-arg ECHO_OPTION=  
 --build-arg NAME=socket_request  
 --build-arg SED_OPTION=''  

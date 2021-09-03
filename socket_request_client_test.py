@@ -26,7 +26,8 @@ cc = socket_request.ControlChain(
     cid=cid,
     # debug=True,
     auto_prepare=True,
-    wait_state=True
+    wait_state=True,
+    # increase_sec=2
 )
 # cc.start()
 # cc.leave()
@@ -62,8 +63,17 @@ cc = socket_request.ControlChain(
 # debug(cc.view_chain(inspect=True).__dict__)
 
 # debug(cc.reset().status_code)
-debug(cc.leave().status_code)
-debug(cc.join(seed_list=seed_list).status_code)
-debug(cc.start().status_code)
-debug(cc.view_chain().get_json("height"))
+# debug(cc.backup())
 
+debug(cc.restore(name="0x92c4dc_0x53_icon_dex_20210903-033922.zip"))
+# debug(cc.start())
+# debug(cc.backup_list())
+# debug(cc.leave().status_code)
+# debug(cc.join(seed_list=seed_list).status_code)
+# debug(cc.start().status_code)
+# debug(cc.view_chain().get_json("height"))
+
+
+# while True:
+#     debug(cc.view_chain(inspect=True))
+#     debug(cc.view_system_config())
