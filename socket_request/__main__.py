@@ -46,6 +46,15 @@ class ResponseField:
     elapsed = 0
     state = {}
 
+    def __init__(self, status_code=None, text=None, json=None, state=None):
+        if status_code:
+            self.status_code = status_code
+        if text:
+            self.text = text
+        if json:
+            self.json = json
+        if state:
+            self.state = state
     def __repr__(self):
         return '<Response [%s]> %s' % (self.status_code, self.text)
 
@@ -331,10 +340,12 @@ class ConnectSock:
 class ControlChain(ConnectSock):
     success_state = {
         "backup": "backup done",
-        "restore": "success"
+        "restore": "success",
+        "start": "started",
+        "stop": "stopped"
     }
 
-    def __init__(self, unix_socket="cli.sock", url="/", cid=None, timeout=5, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
+    def __init__(self, unix_socket="/app/goloop/data/cli.sock", url="/", cid=None, timeout=5, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
         """
         ChainControl class init
 
@@ -400,10 +411,8 @@ class ControlChain(ConnectSock):
             return ret
         return stop_start
 
-
     def get_restore_status(self):
         return self.request(url="/system/restore",  method="GET", return_dict=True)
-
 
     def _decorator_kwargs_checker(check_mandatory=True):
         def real_deco(func):
@@ -414,6 +423,14 @@ class ControlChain(ConnectSock):
                     self.debug_print(f"Start '{func_name}' function", "WHITE")
                     # color_print(f"['{func_name}'] Start function ", "WHITE")
                 # defined default value for function
+
+                if self.auto_prepare:
+                    if func_name not in ["view_chain", "join"]:
+                        self.view_chain()
+                    if self.state.get("state") and self.success_state.get(func_name) == self.state.get("state"):
+                        # print(red(f"Already {self.state.get('state')}"))
+                        # return f"Already {self.state.get('state')}"
+                        return ResponseField(status_code=202, text=f"Already {self.state.get('state')}")
 
                 if check_mandatory is not True:
                     func_params = get_function_parameters(func)
@@ -465,6 +482,7 @@ class ControlChain(ConnectSock):
 
     @_decorator_kwargs_checker
     def start(self, cid=None, **kwargs):
+        debug(self.state)
         res = self.request(url=f"/chain/{self.cid}/start", payload={}, method="POST")
         return res
 
@@ -500,6 +518,9 @@ class ControlChain(ConnectSock):
             autoStart=autoStart,
             platform=platform,
         )
+
+        if not seed_list:
+            raise Exception(red(f"[ERROR] seed_list is None"))
 
         if not os.path.exists(self.gs_file):
             raise Exception(red(f"[ERROR] Genesis file not found - '{gs_file}'"))
@@ -557,6 +578,7 @@ class ControlChain(ConnectSock):
         else:
             url = f"/chain"
         res = self.request(url=url, payload=payload, method="GET", return_dict=True)
+        self.state = res.json
         return res
 
     @_decorator_kwargs_checker
