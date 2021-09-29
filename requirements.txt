@@ -1,2 +1,3 @@
 halo >= 0.0.31
 devtools >= 0.6.1
+argparse >= 1.4.0

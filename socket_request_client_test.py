@@ -5,31 +5,26 @@ import time
 import socket_request
 from devtools import debug
 
-# seed_list = [
-#     "20.20.5.166:7100",
-#     "20.20.5.167:7100",
-#     "20.20.5.168:7100",
-#     "20.20.5.169:7100",
-#     "20.20.5.170:7100",
-#     "20.20.5.172:7100",
-#     "20.20.5.173:7100",
-#     "20.20.5.174:7100",
-#     "20.20.5.175:7100",
-#     "20.20.5.176:7100"
-# ]
-
 seed_list = [
-    "20.20.5.169:7100",
-    "20.20.5.172:7100",
-    "20.20.5.175:7100",
-    "20.20.5.176:7100",
-    "20.20.5.168:7100",
     "20.20.5.166:7100",
     "20.20.5.170:7100",
     "20.20.5.167:7100",
     "20.20.5.174:7100",
-    "20.20.5.173:7100"
+    "20.20.5.173:7100",
 ]
+
+# seed_list = [
+#     "20.20.5.169:7100",
+#     "20.20.5.172:7100",
+#     "20.20.5.175:7100",
+#     "20.20.5.176:7100",
+#     "20.20.5.168:7100",
+#     "20.20.5.166:7100",
+#     "20.20.5.170:7100",
+#     "20.20.5.167:7100",
+#     "20.20.5.174:7100",
+#     "20.20.5.173:7100"
+# ]
 
 gs_file = "conf/gs.zip"
 cid = "0x546653"
@@ -77,11 +72,16 @@ cc = socket_request.ControlChain(
 # for i in range(1, 10):
 #     debug(cc.join())
 
-debug(cc.leave())
-time.sleep(2)
-debug(cc.join(seed_list=seed_list))
-debug(cc.start())
-debug(cc.view_chain().json)
+# for i in range(1,100):
+#     debug(cc.leave())
+#     debug(cc.join(seed_list=seed_list))
+#     debug(cc.start())
+#     time.sleep(3)
+#     debug(cc.view_chain().json)
+
+
+
+
 
 # debug(cc.backup())
 # debug(cc.reset())
@@ -103,7 +103,10 @@ debug(cc.view_chain().json)
 # debug(cc.view_chain().get_json("height"))
 
 # cc.stop()
-
+result = cc.view_chain(inspect=True)
+metrics = result.json['module'].get('metrics')
+debug(metrics)
+socket_request.print_table("ttt", source_dict=metrics)
 # while True:
 #     debug(cc.view_chain(inspect=True))
 #     debug(cc.view_system_config())

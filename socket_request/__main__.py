@@ -55,6 +55,7 @@ class ResponseField:
             self.json = json
         if state:
             self.state = state
+
     def __repr__(self):
         return '<Response [%s]> %s' % (self.status_code, self.text)
 
@@ -161,7 +162,7 @@ class ConnectSock:
 
             body_bytes = payload.encode("utf-8")
 
-            if is_json:
+            if is_json and self.headers.get('Content-Type') is None:
                 self.headers['Content-Type'] = "application/json"
             self.headers['Content-Length'] = len(body_bytes)
             self.r_body = [
@@ -411,6 +412,20 @@ class ControlChain(ConnectSock):
             return ret
         return stop_start
 
+    def _decorator_wait_state(func):
+        def wait_state(self, *args, **kwargs):
+            func_name = func.__name__
+            ret = func(self, *args, **kwargs)
+            if self.wait_state and self.success_state.get(func_name):
+                wait_state_loop(
+                    exec_function=self.view_chain,
+                    check_key="state",
+                    wait_state=self.success_state.get(func_name),
+                    increase_sec=self.increase_sec,
+                    description=f"'{func_name}'")
+            return ret
+        return wait_state
+
     def get_restore_status(self):
         return self.request(url="/system/restore",  method="GET", return_dict=True)
 
@@ -480,12 +495,14 @@ class ControlChain(ConnectSock):
             print("[ERROR] Required cid")
             return False
 
+    @_decorator_wait_state
     @_decorator_kwargs_checker
     def start(self, cid=None, **kwargs):
         debug(self.state)
         res = self.request(url=f"/chain/{self.cid}/start", payload={}, method="POST")
         return res
 
+    @_decorator_wait_state
     @_decorator_kwargs_checker
     def stop(self, cid=None, **kwargs):
         res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
@@ -495,6 +512,15 @@ class ControlChain(ConnectSock):
     def reset(self, cid=None):
         self.stop(cid)
         res = self.request(url=f"/chain/{self.cid}/reset", payload={}, method="POST")
+        return res
+
+    def import_icon(self, payload=None):
+        res = self.request(
+            url=f"/chain/{self.cid}/import_icon",
+            payload=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"}
+        )
         return res
 
     @_decorator_kwargs_checker
@@ -1059,3 +1085,135 @@ def todaydate(type=None):
     elif type == "ms_text":
         return '%s' % datetime.now().strftime("%Y%m%d-%H%M%S%f")[:-3]
 
+
+class Table:
+    def __init__(self, title, headers, rows, view_header=True):
+        title = bcolors.WARNING + title + bcolors.ENDC
+        self.title = title
+        self.headers = headers
+        self.rows = rows
+        self.view_header = view_header
+        self.nrows = len(self.rows)
+        self.fieldlen = []
+
+        self.warn_string = ["stopped","unused"]
+        self.ok_string = ["running"]
+
+        ncols = len(headers)
+
+        for i in range(ncols):
+            max = 0
+            for j in rows:
+                if len(str(j[i])) > max:
+                    max = len(str(j[i]))
+            self.fieldlen.append(max)
+
+        for i in range(len(headers)):
+            if len(str(headers[i])) > self.fieldlen[i]:
+                self.fieldlen[i] = len(str(headers[i]))
+
+        self.width = sum(self.fieldlen)+(ncols-1)*3+4
+
+    def __str__(self):
+        bar = "-"*self.width
+        # title = "| "+self.title+" "*(self.width-3-(len(self.title)))+"|"
+        title = "| "+self.title+" "*(self.width+6-(len(self.title)))+"|"
+        out = [bar, title, bar]
+        header = ""
+        for i in range(len(self.headers)):
+            header += "| %s" % (str(self.headers[i])) + " " * \
+                      (self.fieldlen[i]-len(str(self.headers[i])))+" "
+        header += "|"
+
+        if self.view_header:
+            out.append(header)
+            out.append(bar)
+        for i in self.rows:
+            line = ""
+            for j in range(len(i)):
+                column = str(i[j])
+                # for item in self.warn_string:
+                #     if (line.find(item)) != -1:
+                # column = bcolors.FAIL + column + bcolors.ENDC
+
+                # for item in self.warn_string:
+                #     if (item.find(item)) != -1:
+                #         column = bcolors.FAIL + column + bcolors.ENDC
+                #         is_warn_string = 1
+
+                # for item in self.ok_string:
+                #     if (line.find(item)) != -1:
+                #         is_ok_string = 1
+
+
+                # if intersection(i, self.warn_string):
+                #     column = bcolors.FAIL + column + bcolors.ENDC
+                # if intersection(i, self.ok_string):
+                #     column = bcolors.OKGREEN + column + bcolors.ENDC
+
+                line += "| %s" % (column) + " " * \
+                        (self.fieldlen[j]-len(column))+" "
+
+            for item in self.warn_string:
+                if (line.find(item)) != -1:
+                    line = bcolors.FAIL + line + bcolors.ENDC
+            for item in self.ok_string:
+                if (line.find(item)) != -1:
+                    line = bcolors.OKGREEN + line + bcolors.ENDC
+
+            out.append(line+"|")
+        out.append(bar)
+        return "\r\n".join(out)
+
+
+def minimize_names(object_dict):
+    replace_dest = {
+        "consensus_height": "bh",
+        "duration": "d",
+        "network": "net",
+        "txlatency_commit": "tx_com",
+        "txlatency_finalize": "tx_fin",
+        "txpool": "tx",
+        "user": "usr",
+        "consensus_round": "c_rnd"
+    }
+    new_dict = {}
+    if isinstance(object_dict, dict):
+        for key, value in object_dict.items():
+            new_key = key
+            for k2, v2 in replace_dest.items():
+                if k2 in key:
+                    new_key = new_key.replace(k2, v2)
+            new_dict[new_key] = value
+            print(new_key, value)
+        return new_dict
+    else:
+        return object_dict
+
+
+def print_table(title, source_dict=None, view_header=True, vertical=False):
+    rows = []
+    columns = []
+    source_dict = minimize_names(source_dict)
+    try:
+        source_input = source_dict.keys()
+        columns = list(source_input)
+        print(columns)
+        is_dict = 1
+    except:
+        source_input = source_dict
+        is_dict = 0
+    index = 0
+    for item in source_input:
+        if is_dict:
+            columns_list = [source_dict.get(col, None) for col in columns]
+        else:
+            columns_list = [item.get(col, None) for col in columns]
+        index += 1
+        columns_list.insert(0, index)
+        rows.append(columns_list)
+        if is_dict:
+            break
+
+    columns.insert(0, "idx")
+    print(Table(title, columns, rows, view_header))

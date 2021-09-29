@@ -33,4 +33,9 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent"
     ],
+    entry_points=dict(
+        console_scripts=[
+            'control_chain=socket_request.control_chain_cli:main'
+        ],
+    ),
 )
