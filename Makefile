@@ -81,6 +81,8 @@ clean:
 
 build: make_build_args clean
 		python3 setup.py bdist_wheel
+		pip3 install dist/socket_request-*.whl --force-reinstall
+
 
 upload:
 		python3 -m twine upload dist/* --verbose

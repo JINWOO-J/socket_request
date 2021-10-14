@@ -1,0 +1,5 @@
+{
+            "store_uri": "/goloop/icon/nvme/.storage/db_icon_dex,http://20.20.6.65:8000/api/v3",
+            "config_url": "http://20.20.6.65:8000/config/nvme.json",
+            "max_rps": 500
+        }

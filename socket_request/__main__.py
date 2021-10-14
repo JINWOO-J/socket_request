@@ -73,7 +73,7 @@ class ResponseField:
 
 
 class ConnectSock:
-    def __init__(self, unix_socket="/var/run/docker.sock", timeout=5, debug=False):
+    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False):
         self.unix_socket = unix_socket
         self.timeout = timeout
         self.method = "GET"
@@ -346,7 +346,7 @@ class ControlChain(ConnectSock):
         "stop": "stopped"
     }
 
-    def __init__(self, unix_socket="/app/goloop/data/cli.sock", url="/", cid=None, timeout=5, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
+    def __init__(self, unix_socket="/app/goloop/data/cli.sock", url="/", cid=None, timeout=10, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
         """
         ChainControl class init
 
@@ -1019,11 +1019,11 @@ def _payload_bool2string(payload=None):
     """
     if payload and isinstance(payload, dict):
         for k, v in payload.items():
-            payload[k] = _bool2str(v)
+            payload[k] = bool2str(v)
     return payload
 
 
-def _bool2str(v):
+def bool2str(v):
     if type(v) == bool:
         if v:
             return "true"
@@ -1034,6 +1034,21 @@ def _bool2str(v):
             return "false"
     else:
         return v
+
+
+def str2bool(v):
+
+    if v is None:
+        return False
+    elif type(v) == bool:
+        return v
+
+    if v.lower() in ('yes', 'true',  't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        return False
 
 
 class bcolors:

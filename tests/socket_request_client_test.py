@@ -70,7 +70,7 @@ socket_address = './cli.sock'
 cc = socket_request.ControlChain(
     unix_socket=socket_address,
     # cid=cid,
-    # debug=True,
+    debug=True,
     auto_prepare=True,
     wait_state=True
 )
@@ -141,7 +141,8 @@ cc = socket_request.ControlChain(
 #
 # exit()
 
-debug(cc.backup())
+debug(cc.view_chain())
+# debug(cc.backup())
 # debug("<<<<<<<<sdsdsdsd>>>>>>>>", cc.view_chain())
 # debug(cc.view_chain(detail=True).__dict__)
 # debug(cc.view_chain(inspect=True).__dict__)
