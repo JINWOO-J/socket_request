@@ -528,11 +528,14 @@ class ControlChain(ConnectSock):
              seed_list=[],
              role=3,
              maxBlockTxBytes=2048000,
-             normalTxPool=30000,
+             normalTxPool=10000,
              channel="icon_dex",
              autoStart=True,
              platform="icon",
-             gs_file="conf/gs.zip"
+             gs_file="conf/gs.zip",
+             db_type="rocksdb",
+             tx_timeout=60000,
+             node_cache="small"
              ):
 
         config_payload = dict(
@@ -543,6 +546,9 @@ class ControlChain(ConnectSock):
             channel=channel,
             autoStart=autoStart,
             platform=platform,
+            db_type=db_type,
+            tx_timeout=tx_timeout,
+            node_cache=node_cache
         )
 
         if not seed_list:
