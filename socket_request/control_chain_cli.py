@@ -16,10 +16,16 @@ import os
 
 is_docker = os.environ.get("IS_DOCKER", False)
 
-if socket_request.str2bool(is_docker):
-    base_dir = "/goloop"
-else:
-    base_dir = "/app/goloop"
+
+def get_base_dir(args=None):
+    if args and args.base_dir:
+        base_dir = args.base_dir
+    elif socket_request.str2bool(is_docker):
+        base_dir = "/goloop"
+    else:
+        base_dir = "/app/goloop"
+
+    return base_dir
 
 
 def get_parser():
@@ -29,10 +35,10 @@ def get_parser():
     )
     parser.add_argument(
         'command',
-        choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'join', 'import_icon', 'backup', 'restore', 'ls'],
+        choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'join', 'import_icon', 'backup', 'restore', 'chain_config', 'ls'],
         help='')
-    parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {base_dir}/data/cli.socket)',
-                        default=f"{base_dir}/data/cli.sock")
+    parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
+                        default=f"{get_base_dir()}/data/cli.sock")
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
     parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 5)', default=10)
@@ -42,6 +48,11 @@ def get_parser():
     parser.add_argument('-p', '--payload', metavar='payload file', help=f'payload file', type=argparse.FileType('r'), default=None)
     parser.add_argument('-f', '--forever', action='store_true',  help=f'retry forever', default=False)
     parser.add_argument('-i', '--inspect', action='store_true',  help=f'inspect for view chain', default=False)
+    parser.add_argument('--seedAddress', type=str, help=f'seed list string', default=None)
+    parser.add_argument('-b', '--base-dir', type=str, help=f'base dir for goloop', default=None)
+
+    parser.add_argument('-pd', '--payload-dict', metavar='payload dict', help=f'payload dict', type=json.loads, default=None)
+
     return parser.parse_args()
 
 
@@ -62,8 +73,10 @@ def print_banner():
 
 def check_required(command=None):
     required_params = {
-        "payload": ["import_icon"],
-        "inspect": ["view_chain"]
+        "payload": ["import_icon", "chain_config"],
+        "inspect": ["view_chain"],
+        "seedAddress": ["join"],
+        "gs_file": ["join"],
     }
 
     required_keys = []
@@ -78,11 +91,22 @@ def check_required(command=None):
 def run_function(func, required_keys, args):
     payload = None
     if args.payload:
-        json_data = args.payload.read()
-        try:
-            payload = json.loads(json_data)
-        except Exception as e:
-            raise Exception(f"Invalid JSON - {e}")
+        if isinstance(args.payload, dict):
+            inspect = args.payload
+        else:
+            json_data = args.payload.read()
+            try:
+                payload = json.loads(json_data)
+            except Exception as e:
+                raise Exception(f"Invalid JSON - {e}")
+        debug(payload)
+
+    if isinstance(args.payload_dict, dict):
+        payload = args.payload_dict
+
+    if args.seedAddress:
+        seedAddress = args.seedAddress.split(",")
+        gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
 
     if required_keys:
         arguments = {}
@@ -93,7 +117,7 @@ def run_function(func, required_keys, args):
                 arguments[required_arg] = locals()[required_arg]
 
         if args.debug:
-            debug(required_keys)
+            debug(required_arg)
             debug(arguments)
 
         if len(arguments) > 0:
@@ -102,22 +126,26 @@ def run_function(func, required_keys, args):
             result = func()
     else:
         result = func()
-
     return result
 
 
 def main():
+
     print_banner()
     args = get_parser()
     if args.debug:
         print(args)
 
-    payload = None
-    inspect = None
-    result = None
+    # inspect = None
+    # result = None
 
+    if args.base_dir:
+        args.unixsocket = f"{args.base_dir}/data/cli.sock"
+
+    if args.inspect:
+        args.payload = {"inspect": args.inspect}
     if args.command == "import_icon" and args.payload is None:
-        args.payload = open(f"{base_dir}/config/import_config.json")
+        args.payload = open(f"{args.base_dir}/config/import_config.json")
 
     cc = socket_request.ControlChain(
         unix_socket=args.unixsocket,
@@ -125,21 +153,42 @@ def main():
         debug=args.debug,
         auto_prepare=args.auto_prepare,
         wait_state=args.wait_state,
-        timeout=args.timeout
-        # increase_sec=2
+        timeout=args.timeout,
     )
+
     if args.command == "ls":
         args.command = "view_chain"
 
     func = getattr(cc, args.command)
     required_keys = check_required(args.command)
+    if args.debug:
+        print(f"command = {args.command},  required_keys = {required_keys}")
     while True:
         # if args.debug:
         #     debug(locals())
         result = run_function(func, required_keys, args)
-
         if result:
-            socket_request.color_print(f"{result.text}")
+            if args.inspect:
+                socket_request.dump(result.json)
+            else:
+                if result:
+                    if result.status_code >= 300:
+                        text_color = "RED"
+                    else:
+                        text_color = "GREEN"
+
+                    if result.json:
+                        result_text = result.json
+                    elif result.text:
+                        result_text = result.text
+
+                    socket_request.color_print(f"{result_text}", text_color)
+
+                    if text_color == "RED":
+                        socket_request.color_print(str(cc.get_state()))
+                else:
+                    socket_request.color_print(f"return {result}")
+
         else:
             print(cc.view_chain())
             socket_request.color_print(f"[ERROR] {args.command}, {result.text}", "FAIL")

@@ -35,6 +35,7 @@ from functools import partial, wraps
 from halo import Halo
 from devtools import debug
 import time
+import sys
 
 writer = codecs.lookup("utf-8")[3]
 
@@ -61,10 +62,14 @@ class ResponseField:
 
     def get_json(self, key=None):
         result = {}
-        try:
-            result = json.loads(self.text)
-        except:
-            pass
+
+        if isinstance(self.text, dict):
+            result = self.text
+        else:
+            try:
+                result = json.loads(self.text)
+            except:
+                pass
 
         if key:
             return result.get(key)
@@ -73,18 +78,22 @@ class ResponseField:
 
 
 class ConnectSock:
-    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False):
+    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None):
         self.unix_socket = unix_socket
         self.timeout = timeout
         self.method = "GET"
         self.url = "/"
 
-        self.headers = {
-            "Host": "*",
-            "Accept": "*/*",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-        self.Response = ResponseField()
+        if isinstance(headers, dict):
+            self.default_headers = headers
+        else:
+            self.headers = {
+                "Host": "*",
+                "Accept": "*/*",
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+            self.default_headers = self.headers
+
         self.sock = None
         self.debug = debug
         self._initialize_vars()
@@ -97,6 +106,8 @@ class ConnectSock:
             # print(f"{self.about['__title__']} v{self.about['__version__']}")
 
     def _initialize_vars(self):
+        # self.headers = self.default_headers
+        self.headers = self.default_headers.copy()
         self.r_headers = []
         self.r_headers_string = ""
         self.r_body = []
@@ -107,12 +118,18 @@ class ConnectSock:
         self.files = {}
         self.detail = False
         self.inspect = False
+        self.Response = ResponseField()
 
-    def _connect_sock(self):
+    def _connect_sock(self, timeout=None):
+        if timeout:
+            connect_timeout = timeout
+        else:
+            connect_timeout = self.timeout
+
         if self.unix_socket and os.path.exists(self.unix_socket):
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.settimeout(self.timeout)
+            sock.settimeout(connect_timeout)
             sock.connect(self.unix_socket)
             self.sock = sock
         else:
@@ -147,6 +164,7 @@ class ConnectSock:
         self.r_headers_string = _append_new_line(self.r_headers_string, "\r\n")
 
     def _prepare_body(self, payload=None, files=None):
+
         if files:
             self.r_body_string, content_type, content_length = self.encode_multipart_formdata(files)
             self.headers['Content-Type'] = content_type
@@ -245,7 +263,7 @@ class ConnectSock:
         return from_kwargs
 
     @_decorator_timing
-    def request(self, method="GET", url=None, headers={}, payload={}, files={}, return_dict=False):
+    def request(self, method="GET", url=None, headers={}, payload={}, files={}, return_dict=False, timeout=None):
         """
         Create an HTTP request and send it to the unix domain socket.
         :param method:
@@ -256,9 +274,11 @@ class ConnectSock:
         :param return_dict: if response is a list type, change to dictionary => e.g., [{"cid":"232"}]  -> {"cid": "232"}
         :return:
         """
+        self._initialize_vars()
+
         if self.debug:
             print(f"unix_socket={self.unix_socket}, url={url}, method={method}, headers={headers}, payload={payload}, files={files}")
-        self._connect_sock()
+        self._connect_sock(timeout=timeout)
 
         if self.sock:
             self.method = method.upper()
@@ -358,17 +378,20 @@ class ControlChain(ConnectSock):
         :param auto_prepare: Prepare before execution. e.g., Backup should be done after stopping.
         :param wait_state: Wait until the required state(success_state dict) is reached.
         """
-        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug)
-        self.url = url
-        self.unix_socket = unix_socket
-        self.cid = cid
-        # self.action_model = ChainActionModel()
+
         self.headers = {
             "Host": "*",
             "Accept": "*/*",
             "Content-Type": "application/json",
             "User-Agent": "socket-request"
         }
+
+        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers)
+        self.url = url
+        self.unix_socket = unix_socket
+        self.cid = cid
+        # self.action_model = ChainActionModel()
+
         self.payload = {}
         self.files = {}
         self.detail = False
@@ -480,7 +503,8 @@ class ControlChain(ConnectSock):
         res = self.view_chain()
         if res.json and res.get_json("cid"):
             self.state = res.get_json()
-            return res.get_json('cid')
+            self.cid = res.get_json('cid')
+            return self.cid
 
     @_decorator_kwargs_checker
     def _kwargs_test(self, cid=None):
@@ -495,21 +519,43 @@ class ControlChain(ConnectSock):
             print("[ERROR] Required cid")
             return False
 
+    def get_state(self):
+        res = self.view_chain().get_json()
+        if isinstance(res, list) and len(res) == 0:
+            self.state = {}
+        else:
+            self.state = res
+        return self.state
+
     @_decorator_wait_state
     @_decorator_kwargs_checker
     def start(self, cid=None, **kwargs):
-        debug(self.state)
+        if cid:
+            self.cid = cid
+        if self.cid is None:
+            self.guess_cid()
+
         res = self.request(url=f"/chain/{self.cid}/start", payload={}, method="POST")
         return res
 
     @_decorator_wait_state
     @_decorator_kwargs_checker
     def stop(self, cid=None, **kwargs):
+        if cid:
+            self.cid = cid
+        if self.cid is None:
+            self.guess_cid()
+
         res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
         return res
 
     @_decorator_kwargs_checker
     def reset(self, cid=None):
+        if cid:
+            self.cid = cid
+        if self.cid is None:
+            self.guess_cid()
+
         self.stop(cid)
         res = self.request(url=f"/chain/{self.cid}/reset", payload={}, method="POST")
         return res
@@ -519,40 +565,42 @@ class ControlChain(ConnectSock):
             url=f"/chain/{self.cid}/import_icon",
             payload=payload,
             method="POST",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=60
         )
+        self.guess_cid()
         return res
 
     @_decorator_kwargs_checker
     def join(self,
-             seed_list=[],
+             seedAddress=[],
              role=3,
              maxBlockTxBytes=2048000,
              normalTxPool=10000,
              channel="icon_dex",
              autoStart=True,
              platform="icon",
-             gs_file="conf/gs.zip",
-             db_type="rocksdb",
-             tx_timeout=60000,
-             node_cache="small"
+             gs_file="config/icon_genesis.zip",
+             dbType="rocksdb",
+             txTimeout=60000,
+             nodeCache="small"
              ):
 
         config_payload = dict(
-            seed_list=",".join(seed_list),
-            role=role,
-            maxBlockTxBytes=maxBlockTxBytes,
-            normalTxPool=normalTxPool,
+            seedAddress=",".join(seedAddress),
+            role=int(role),
+            maxBlockTxBytes=int(maxBlockTxBytes),
+            normalTxPool=int(normalTxPool),
             channel=channel,
             autoStart=autoStart,
             platform=platform,
-            db_type=db_type,
-            tx_timeout=tx_timeout,
-            node_cache=node_cache
+            dbType=dbType,
+            txTimeout=int(txTimeout),
+            nodeCache=nodeCache
         )
 
-        if not seed_list:
-            raise Exception(red(f"[ERROR] seed_list is None"))
+        if not seedAddress:
+            raise Exception(red(f"[ERROR] seedAddress is None"))
 
         if not os.path.exists(self.gs_file):
             raise Exception(red(f"[ERROR] Genesis file not found - '{gs_file}'"))
@@ -566,12 +614,22 @@ class ControlChain(ConnectSock):
         }
 
         res = self.request(url=f"/chain", payload={}, method="POST", files=files)
+        self.guess_cid()
+        debug(res.status_code)
         return res
         # else:
         #     print(f"[ERROR] Required files")
 
-    @_decorator_kwargs_checker
+    # @_decorator_kwargs_checker
     def leave(self, cid=None):
+        if cid:
+            self.cid = cid
+        if self.cid is None:
+            self.guess_cid()
+
+        if self.cid is None:
+            return ResponseField(status_code=400, text=f"Already leave, cid not found")
+
         res = self.request(url=f"/chain/{self.cid}", payload={}, method="delete")
         return res
 
@@ -614,10 +672,51 @@ class ControlChain(ConnectSock):
         return res
 
     @_decorator_kwargs_checker
+    @_decorator_stop_start
     def chain_config(self, payload=None):
-        payload = _payload_bool2string(payload)
-        res = self.request(url=f"/chain/{self.cid}/configure", payload=payload,  method="POST")
-        return res
+        # payload = _payload_bool2string(payload)
+
+        # res = self.request(url=f"/chain/{self.cid}/configure", payload=payload,  method="POST")
+        result = {
+            "state": "OK",
+            "payload": payload,
+            "error": []
+        }
+
+        status_code = 201
+
+        if not isinstance(payload, dict):
+            raise Exception(red(f"[ERROR] Invalid payload '{payload}'"))
+
+        for key, value in payload.items():
+
+            if isinstance(value, bool):
+                value = bool2str(value)
+            elif isinstance(value, int):
+                value = str(value)
+            elif isinstance(value, float):
+                value = str(value)
+
+            debug(key, value) if self.debug else False
+            each_payload = {"key": key, "value": value}
+            res = self.request(url=f"/chain/{self.cid}/configure", payload=each_payload,  method="POST")
+            debug(res) if self.debug else False
+
+            if res.status_code != 200:
+                if len(res.text) > 1:
+                    return_text = res.text.split("\n")[0]
+                else:
+                    return_text = res.text
+                result['error'].append({
+                    "key": key,
+                    "value": value,
+                    "message": return_text
+                })
+                result['state'] = "FAIL"
+                status_code = 400
+
+        return ResponseField(status_code=status_code, text=result)
+        # return result
 
     def view_system_config(self, detail=True):
         if detail:
@@ -1064,6 +1163,7 @@ class bcolors:
     GREEN = '\033[92m'
     WARNING = '\033[93m'
     FAIL = '\033[91m'
+    RED = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
@@ -1238,3 +1338,40 @@ def print_table(title, source_dict=None, view_header=True, vertical=False):
 
     columns.insert(0, "idx")
     print(Table(title, columns, rows, view_header))
+
+
+def is_hex(s):
+    try:
+        int(s, 16)
+        return True
+    except:
+        return False
+
+
+def dump(obj, nested_level=0, output=sys.stdout, hex_to_int=False):
+    spacing = '   '
+    def_spacing = '   '
+    if type(obj) == dict:
+        print('%s{' % (def_spacing + (nested_level) * spacing))
+        for k, v in obj.items():
+            if hasattr(v, '__iter__'):
+                print(bcolors.OKGREEN + '%s%s:' % (def_spacing + (nested_level + 1) * spacing, k) + bcolors.ENDC, end="")
+                dump(v, nested_level + 1, output, hex_to_int)
+            else:
+                # print >>  bcolors.OKGREEN + '%s%s: %s' % ( (nested_level + 1) * spacing, k, v) + bcolors.ENDC
+                print(bcolors.OKGREEN + '%s%s:' % (def_spacing + (nested_level + 1) * spacing, k) + bcolors.WARNING + ' %s' % v + bcolors.ENDC,
+                      file=output)
+        print('%s}' % (def_spacing + nested_level * spacing), file=output)
+    elif type(obj) == list:
+        print('%s[' % (def_spacing + (nested_level) * spacing), file=output)
+        for v in obj:
+            if hasattr(v, '__iter__'):
+                dump(v, nested_level + 1, output, hex_to_int)
+            else:
+                print(bcolors.WARNING + '%s%s' % (def_spacing + (nested_level + 1) * spacing, v) + bcolors.ENDC, file=output)
+        print('%s]' % (def_spacing + (nested_level) * spacing), file=output)
+    else:
+        if hex_to_int and is_hex(obj):
+            print(bcolors.WARNING + '%s%s' % (def_spacing + nested_level * spacing, str(round(int(obj, 16)/10**18, 8)) + bcolors.ENDC))
+        else:
+            print(bcolors.WARNING + '%s%s' % (def_spacing + nested_level * spacing, obj) + bcolors.ENDC)

@@ -6,11 +6,17 @@ import socket_request
 from devtools import debug
 
 seed_list = [
-    "20.20.5.166:7100",
-    "20.20.5.170:7100",
-    "20.20.5.167:7100",
-    "20.20.5.174:7100",
-    "20.20.5.173:7100",
+    # "20.20.5.166:7100",
+    # "20.20.5.170:7100",
+    # "20.20.5.167:7100",
+    # "20.20.5.174:7100",
+    # "20.20.5.173:7100",
+
+    "20.20.1.242:7100",
+    "20.20.1.122:7100",
+    "20.20.1.123:7100",
+    "20.20.1.65:7100",
+    "20.20.1.167:7100",
 ]
 
 # seed_list = [
@@ -28,7 +34,7 @@ seed_list = [
 
 gs_file = "conf/gs.zip"
 cid = "0x546653"
-socket_address = './cli.sock'
+socket_address = './data/cli.sock'
 
 cc = socket_request.ControlChain(
     unix_socket=socket_address,
@@ -36,6 +42,7 @@ cc = socket_request.ControlChain(
     # debug=True,
     auto_prepare=True,
     wait_state=True,
+    timeout=30
     # increase_sec=2
 )
 # cc.start()
@@ -48,6 +55,7 @@ cc = socket_request.ControlChain(
 
 # debug(cc.view_system_config())
 # debug(cc.system_config(payload={"key": "rpcIncludeDebug", "value": "true"}))
+
 # debug(cc.chain_config(payload={"key": "autoStart", "value": True}))
 
 # debug(cc.backup())
@@ -103,10 +111,46 @@ cc = socket_request.ControlChain(
 # debug(cc.view_chain().get_json("height"))
 
 # cc.stop()
-result = cc.view_chain(inspect=True)
-metrics = result.json['module'].get('metrics')
-debug(metrics)
-socket_request.print_table("ttt", source_dict=metrics)
+
+payload = {
+    "normalTxPool": 30001,
+    # "role": 3,
+    # "seedAddress": "20.20.1.122:7100,20.20.165:7100,20.20.1.223:7100,20.20.1.167:7100,20.20.1.242:7100",
+    # "autoStart": True,
+
+}
+
+res = cc.chain_config(payload=payload)
+
+debug(res.status_code)
+
+# debug(res.json)
+debug(res.get_json())
+
+# result = cc.view_chain(inspect=True)
+#
+# debug(result)
+
+# debug(cc.get_state())
+
+# metrics = result.json['module'].get('metrics')
+# debug(metrics)
+# socket_request.print_table("ttt", source_dict=metrics)
 # while True:
 #     debug(cc.view_chain(inspect=True))
 #     debug(cc.view_system_config())
+
+# cc.join(seedAddress=seed_list, gs_file="conf/icon_genesis.zip", role=3)
+
+# debug(cc.view_chain(cid=None))
+debug(cc.get_state())
+
+# for i in range(1, 100):
+#     print(i)
+#     cc.leave()
+#     cc.join(seedAddress=seed_list, gs_file="conf/icon_genesis.zip", role=3)
+#     cc.start()
+#     time.sleep(3)
+#     debug(cc.get_state())
+
+
