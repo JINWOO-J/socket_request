@@ -35,13 +35,13 @@ def get_parser():
     )
     parser.add_argument(
         'command',
-        choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'join', 'import_icon', 'backup', 'restore', 'chain_config', 'ls'],
+        choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'join', 'import_icon', "import_finish", 'backup', 'restore', 'chain_config', 'ls'],
         help='')
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
                         default=f"{get_base_dir()}/data/cli.sock")
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
-    parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 5)', default=10)
+    parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 60)', default=60)
     parser.add_argument('-w', '--wait_state', metavar='wait_state', help=f'wait_state (default: True)', default=True)
     parser.add_argument('-ap', '--auto_prepare', metavar='auto_prepare', help=f'auto_prepare (default: True)', default=True)
 
@@ -95,10 +95,11 @@ def run_function(func, required_keys, args):
             inspect = args.payload
         else:
             json_data = args.payload.read()
-            try:
-                payload = json.loads(json_data)
-            except Exception as e:
-                raise Exception(f"Invalid JSON - {e}")
+            if json_data:
+                try:
+                    payload = json.loads(json_data)
+                except Exception as e:
+                    raise Exception(f"Invalid JSON - {e}, json_data={json_data}")
         debug(payload)
 
     if isinstance(args.payload_dict, dict):
@@ -141,6 +142,8 @@ def main():
 
     if args.base_dir:
         args.unixsocket = f"{args.base_dir}/data/cli.sock"
+    else:
+        args.base_dir = get_base_dir()
 
     if args.inspect:
         args.payload = {"inspect": args.inspect}
@@ -161,6 +164,8 @@ def main():
 
     func = getattr(cc, args.command)
     required_keys = check_required(args.command)
+    result_text = None
+    result = {}
     if args.debug:
         print(f"command = {args.command},  required_keys = {required_keys}")
     while True:

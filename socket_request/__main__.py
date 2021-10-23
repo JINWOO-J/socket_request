@@ -363,7 +363,8 @@ class ControlChain(ConnectSock):
         "backup": "backup done",
         "restore": "success",
         "start": "started",
-        "stop": "stopped"
+        "stop": "stopped",
+        "import_stop": "import_icon finished"
     }
 
     def __init__(self, unix_socket="/app/goloop/data/cli.sock", url="/", cid=None, timeout=10, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
@@ -541,6 +542,39 @@ class ControlChain(ConnectSock):
     @_decorator_wait_state
     @_decorator_kwargs_checker
     def stop(self, cid=None, **kwargs):
+        if cid:
+            self.cid = cid
+        if self.cid is None:
+            self.guess_cid()
+
+        res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
+        return res
+
+    @_decorator_kwargs_checker
+    def import_finish(self, cid=None, **kwargs):
+        if cid:
+            self.cid = cid
+        if self.cid is None:
+            self.guess_cid()
+
+        res = None
+        try:
+            self.import_stop()
+            time.sleep(3)
+            self.stop()
+            time.sleep(3)
+            res = self.start()
+        except Exception as e:
+            color_print(f"{self.get_state()}, e={e}")
+
+        if res.status_code == 200:
+            color_print("Congrats! Successfully imported")
+            color_print(f"{self.get_state()}")
+        return res
+
+    @_decorator_wait_state
+    @_decorator_kwargs_checker
+    def import_stop(self, cid=None, **kwargs):
         if cid:
             self.cid = cid
         if self.cid is None:
@@ -1190,6 +1224,8 @@ def color_print(text, color="GREEN", date=True, **kwargs):
     date_string = ""
     if date:
         date_string = todaydate("ms")
+    if isinstance(text, dict) or isinstance(text,list):
+        text = str(text)
 
     print(f"{get_bcolors(date_string +' '+ text, color.upper())}", **kwargs)
 
