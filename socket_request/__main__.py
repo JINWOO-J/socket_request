@@ -422,7 +422,6 @@ class ControlChain(ConnectSock):
                     exec_function = self.get_restore_status
                 else:
                     exec_function = self.view_chain
-
                 if self.wait_state and self.success_state.get(func_name):
                     wait_state_loop(
                         exec_function=exec_function,
@@ -557,20 +556,22 @@ class ControlChain(ConnectSock):
         if self.cid is None:
             self.guess_cid()
 
-        res = None
+        stop_res_1 = None
+        stop_res_2 = None
+
         try:
-            self.import_stop()
+            stop_res_1 = self.import_stop()
             time.sleep(3)
-            self.stop()
+            stop_res_2 = self.stop()
             time.sleep(3)
-            res = self.start()
+            if stop_res_1.status_code == 200 and stop_res_2.status_code == 200:
+                color_print("Congrats! Successfully imported")
+                color_print(f"{self.get_state()}")
+            else:
+                color_print(f"[FAIL] stop_res_1={stop_res_1}, stop_res_2={stop_res_2}", "red")
         except Exception as e:
             color_print(f"{self.get_state()}, e={e}")
-
-        if res.status_code == 200:
-            color_print("Congrats! Successfully imported")
-            color_print(f"{self.get_state()}")
-        return res
+        return stop_res_2
 
     @_decorator_wait_state
     @_decorator_kwargs_checker
@@ -1176,12 +1177,10 @@ def bool2str(v):
 
 
 def str2bool(v):
-
     if v is None:
         return False
     elif type(v) == bool:
         return v
-
     if v.lower() in ('yes', 'true',  't', 'y', '1'):
         return True
     elif v.lower() in ('no', 'false', 'f', 'n', '0'):

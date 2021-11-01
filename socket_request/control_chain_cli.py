@@ -42,7 +42,7 @@ def get_parser():
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
     parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 60)', default=60)
-    parser.add_argument('-w', '--wait_state', metavar='wait_state', help=f'wait_state (default: True)', default=True)
+    parser.add_argument('-w', '--wait_state', metavar='wait_state', type=socket_request.str2bool, help=f'wait_state (default: True)', default=True)
     parser.add_argument('-ap', '--auto_prepare', metavar='auto_prepare', help=f'auto_prepare (default: True)', default=True)
 
     parser.add_argument('-p', '--payload', metavar='payload file', help=f'payload file', type=argparse.FileType('r'), default=None)
