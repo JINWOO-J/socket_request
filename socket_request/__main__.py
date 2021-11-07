@@ -37,6 +37,11 @@ from devtools import debug
 import time
 import sys
 
+try:
+    from .__version__ import __version__
+except:
+    from __version__ import __version__
+
 writer = codecs.lookup("utf-8")[3]
 
 
@@ -46,8 +51,9 @@ class ResponseField:
     json = {}
     elapsed = 0
     state = {}
+    error = None
 
-    def __init__(self, status_code=None, text=None, json=None, state=None):
+    def __init__(self, status_code=None, text=None, json=None, state=None, error=None):
         if status_code:
             self.status_code = status_code
         if text:
@@ -56,12 +62,13 @@ class ResponseField:
             self.json = json
         if state:
             self.state = state
+        if error:
+            self.error = error
 
     def __repr__(self):
         return '<Response [%s]> %s' % (self.status_code, self.text)
 
     def get_json(self, key=None):
-        result = {}
 
         if isinstance(self.text, dict):
             result = self.text
@@ -69,20 +76,29 @@ class ResponseField:
             try:
                 result = json.loads(self.text)
             except:
-                pass
+                result = {
+                    "text": self.text
+                }
+
+        if isinstance(result, dict):
+            result["error"] = self.error
 
         if key:
             return result.get(key)
 
         return result
 
+    def get(self, key=None):
+        return self.get_json(key)
+
 
 class ConnectSock:
-    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None):
+    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None, wait_socket=False):
         self.unix_socket = unix_socket
         self.timeout = timeout
         self.method = "GET"
         self.url = "/"
+        self.wait_socket = wait_socket
 
         if isinstance(headers, dict):
             self.default_headers = headers
@@ -97,6 +113,7 @@ class ConnectSock:
         self.sock = None
         self.debug = debug
         self._initialize_vars()
+        self.connect_error = None
 
         if debug:
             self.about = {}
@@ -120,7 +137,59 @@ class ConnectSock:
         self.inspect = False
         self.Response = ResponseField()
 
+    # def _decorator_check_connect(func):
+    #     def connect_health_sock(self, *args, **kwargs):
+    #         if self.wait_socket:
+    #             wait_count = 0
+    #             # while os.path.exists(self.unix_socket) is False:
+    #             while self.health_check() is False:
+    #                 print(f"[{wait_count}] Wait for \'{self.unix_socket}\' to be created")
+    #                 time.sleep(1)
+    #                 wait_count += 1
+    #             # print(f"Successfully \'{self.unix_socket}\' to be created")
+    #         func(self, *args, **kwargs)
+    #
+    #         return
+    #     return connect_health_sock
+
+    def health_check(self):
+        if os.path.exists(self.unix_socket) is False:
+            self.connect_error = f"[ERROR] health_check '{self.unix_socket}' socket file not found"
+            # print(red(self.connect_error))
+            return False
+        try:
+            self.sock = None
+            self._connect_sock_with_exception()
+            self.sock.close()
+        except Exception as e:
+            self.connect_error = f"[ERROR] health_check cannot connect a socket: {e}"
+            # print(red(self.connect_error))
+            return False
+        return True
+
+    # @_decorator_check_connect
     def _connect_sock(self, timeout=None):
+        if self.wait_socket:
+            wait_count = 0
+            # while os.path.exists(self.unix_socket) is False:
+            while self.health_check() is False:
+                message = f"[{wait_count}] Wait for \'{self.unix_socket}\' to be created"
+                if self.logger:
+                    self.logging(message)
+                else:
+                    print(message)
+                time.sleep(1)
+                wait_count += 1
+            # print(f"Successfully \'{self.unix_socket}\' to be created")
+            self._connect_sock_with_exception(timeout=timeout)
+
+        elif self.health_check():
+            self._connect_sock_with_exception(timeout=timeout)
+
+        else:
+            return False
+
+    def _connect_sock_with_exception(self, timeout=None):
         if timeout:
             connect_timeout = timeout
         else:
@@ -133,8 +202,7 @@ class ConnectSock:
             sock.connect(self.unix_socket)
             self.sock = sock
         else:
-            # color_print(f"[ERROR] Unix Domain Socket not found - '{self.unix_socket}'", "FAIL")
-            raise Exception(red(f"[ERROR] Unix Domain Socket not found - '{self.unix_socket}'"))
+            raise Exception(red(f"[ERROR] Unix Domain Socket not found - '{self.unix_socket}', wait={self.wait_socket}"))
 
     def _dict_key_title(self, data):
         """
@@ -278,8 +346,8 @@ class ConnectSock:
 
         if self.debug:
             print(f"unix_socket={self.unix_socket}, url={url}, method={method}, headers={headers}, payload={payload}, files={files}")
-        self._connect_sock(timeout=timeout)
 
+        self._connect_sock(timeout=timeout)
         if self.sock:
             self.method = method.upper()
 
@@ -304,6 +372,8 @@ class ConnectSock:
             self.sock.close()
             # debug(contents)
             return self._parsing_response(contents, return_dict=return_dict)
+        else:
+            return ResponseField(status_code=500, text=f"[ERROR] fail to connection, {self.connect_error}")
 
     def _parsing_response(self, response, return_dict=False):
         """
@@ -367,7 +437,16 @@ class ControlChain(ConnectSock):
         "import_stop": "import_icon finished"
     }
 
-    def __init__(self, unix_socket="/app/goloop/data/cli.sock", url="/", cid=None, timeout=10, debug=False, auto_prepare=True, wait_state=True, increase_sec=0.5):
+    def __init__(
+            self,
+            unix_socket="/app/goloop/data/cli.sock",
+            url="/", cid=None, timeout=10,
+            debug=False, auto_prepare=True, wait_state=True,
+            increase_sec=0.5,
+            wait_socket=False,
+            logger=None,
+            check_args=True
+    ):
         """
         ChainControl class init
 
@@ -387,7 +466,7 @@ class ControlChain(ConnectSock):
             "User-Agent": "socket-request"
         }
 
-        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers)
+        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers, wait_socket=wait_socket)
         self.url = url
         self.unix_socket = unix_socket
         self.cid = cid
@@ -402,8 +481,12 @@ class ControlChain(ConnectSock):
         self.state = {}
         self.gs_file = None
         self.increase_sec = increase_sec
+        self.logger = logger
+        self.check_args = check_args
 
-        if self.cid is None:
+        self.logging(f"Load ControlChain Version={__version__}")
+
+        if self.cid is None and self.health_check():
             self.debug_print("cid not found. Guess it will get the cid.")
             self.cid = self.guess_cid()
             self.debug_print(f"guess_cid = {self.cid}")
@@ -411,6 +494,13 @@ class ControlChain(ConnectSock):
     # def _get_args_dict(fn, args, kwargs):
     #     args_names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
     #     return {**dict(zip(args_names, args)), **kwargs}
+
+    def logging(self, message=None, level="info"):
+        if self.logger:
+            if level == "info" and hasattr(self.logger, "info"):
+                self.logger.info(f"[CC] {message}")
+            elif level == "error" and hasattr(self.logger, "error"):
+                self.logger.error(f"[CC] {message}")
 
     def _decorator_stop_start(func):
         def stop_start(self, *args, **kwargs):
@@ -428,7 +518,9 @@ class ControlChain(ConnectSock):
                         check_key="state",
                         wait_state=self.success_state.get(func_name),
                         increase_sec=self.increase_sec,
-                        description=f"'{func_name}'")
+                        description=f"'{func_name}'",
+                        logger=self.logger
+                    )
                 self.start(*args, **kwargs)
             else:
                 ret = func(self, **kwargs)
@@ -445,7 +537,9 @@ class ControlChain(ConnectSock):
                     check_key="state",
                     wait_state=self.success_state.get(func_name),
                     increase_sec=self.increase_sec,
-                    description=f"'{func_name}'")
+                    description=f"'{func_name}'",
+                    logger=self.logger
+                )
             return ret
         return wait_state
 
@@ -480,7 +574,7 @@ class ControlChain(ConnectSock):
                             setattr(self, key, value)
                         default_param = getattr(self, key)
 
-                        if check_mandatory and True and value is None and (default_param is None or default_param == {} or default_param == []):
+                        if (self.check_args and check_mandatory and True) and value is None and (default_param is None or default_param == {} or default_param == []):
                             raise Exception(red(f"Required '{key}' parameter for {func_name}()"))
 
                     self.debug_print(f"_decorator_kwargs_checker(), kwargs = {kwargs}")
@@ -519,12 +613,32 @@ class ControlChain(ConnectSock):
             print("[ERROR] Required cid")
             return False
 
+    # def get_state(self):
+    #     if self.health_check():
+    #         res = self.view_chain().get_json()
+    #         if isinstance(res, list) and len(res) == 0:
+    #             self.state = {}
+    #         else:
+    #             self.state = res
+    #     else:
+    #         self.state = {
+    #             "error": self.connect_error
+    #         }
+    #     return self.state
+
     def get_state(self):
-        res = self.view_chain().get_json()
-        if isinstance(res, list) and len(res) == 0:
-            self.state = {}
+        # res = self.view_chain().get_json()
+        result = self.view_chain()
+        if result.status_code == 200:
+            res = self.view_chain().get_json()
+            if isinstance(res, list) and len(res) == 0:
+                self.state = {}
+            else:
+                self.state = res
+                if self.state.get("cid"):
+                    self.cid = self.state["cid"]
         else:
-            self.state = res
+            self.state['error'] = result.text
         return self.state
 
     @_decorator_wait_state
@@ -545,7 +659,6 @@ class ControlChain(ConnectSock):
             self.cid = cid
         if self.cid is None:
             self.guess_cid()
-
         res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
         return res
 
@@ -703,7 +816,16 @@ class ControlChain(ConnectSock):
         else:
             url = f"/chain"
         res = self.request(url=url, payload=payload, method="GET", return_dict=True)
-        self.state = res.json
+
+        if res.status_code != 200:
+            self.logging(f"[CC] view_chain res.status_code={res.status_code}, res = {res.text}")
+
+        if hasattr(res, 'json'):
+            self.state = res.json
+            # self.connect_error = res.get('error')
+        else:
+            self.state = {}
+            self.connect_error = res.text
         return res
 
     @_decorator_kwargs_checker
@@ -1047,7 +1169,8 @@ def wait_state_loop(
         increase_sec=0.5,
         health_status=None,
         description="",
-        force_dict=True
+        force_dict=True,
+        logger=None
 ):
     start_time = time.time()
     count = 0
@@ -1061,8 +1184,11 @@ def wait_state_loop(
     exec_function_name = exec_function.__name__
     # classdump(exec_function.__qualname__)
     # print(exec_function.__qualname__)
-
+    act_desc = f"desc={description}, function={exec_function_name}, args={func_args}"
     spinner = Halo(text=f"[START] Wait for {description} , {exec_function_name}, {func_args}", spinner='dots')
+    if logger and hasattr(logger, "info"):
+        logger.info(f"[CC] [START] {act_desc}")
+
     spinner.start()
 
     while True:
@@ -1108,16 +1234,25 @@ def wait_state_loop(
         text = f"[{count:.1f}s] Waiting for {exec_function_name} / {func_args} :: '{wait_state}' -> '{check_state}' , {error_msg}"
         spinner.start(text=text)
 
+        if logger and hasattr(logger, "info"):
+            logger.info(f"[CC] {text}")
+
         try:
             assert time.time() < start_time + timeout_limit
         except AssertionError:
             text = f"[{count:.1f}s] [{timeout_limit}s Timeout] Waiting for {exec_function_name} / '{func_args}' :: '{wait_state}' -> {check_state} , {error_msg}"
             spinner.start(text=text)
 
+            if logger and hasattr(logger, "error"):
+                logger.info(f"[CC] {text}")
+
         count = count + increase_sec
         time.sleep(increase_sec)
 
         spinner.stop()
+
+    if logger and hasattr(logger, "info"):
+        logger.info(f"[CC] [DONE] {act_desc}")
 
     if health_status:
         return response

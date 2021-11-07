@@ -23,8 +23,11 @@ def get_base_dir(args=None):
     elif socket_request.str2bool(is_docker):
         base_dir = "/goloop"
     else:
-        base_dir = "/app/goloop"
-
+        guess_base_dir = ["/app/icon2-node", "/app/goloop"]
+        base_dir = guess_base_dir[0]
+        for dir_name in guess_base_dir:
+            if os.path.exists(dir_name):
+                base_dir = dir_name
     return base_dir
 
 
@@ -42,10 +45,12 @@ def get_parser():
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
     parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 60)', default=60)
-    parser.add_argument('-w', '--wait_state', metavar='wait_state', type=socket_request.str2bool, help=f'wait_state (default: True)', default=True)
+
+    parser.add_argument('-w', '--wait-state', metavar='wait_state', type=socket_request.str2bool, help=f'wait_state (default: True)', default=True)
+    parser.add_argument('-ws', '--wait-socket', action='store_true',  help=f'wait for unix domain socket',  default=False)
     parser.add_argument('-ap', '--auto_prepare', metavar='auto_prepare', help=f'auto_prepare (default: True)', default=True)
 
-    parser.add_argument('-p', '--payload', metavar='payload file', help=f'payload file', type=argparse.FileType('r'), default=None)
+    parser.add_argument('-p', '--payload', metavar='payload_file', help=f'payload file', type=argparse.FileType('r'), default=None)
     parser.add_argument('-f', '--forever', action='store_true',  help=f'retry forever', default=False)
     parser.add_argument('-i', '--inspect', action='store_true',  help=f'inspect for view chain', default=False)
     parser.add_argument('--seedAddress', type=str, help=f'seed list string', default=None)
@@ -66,9 +71,10 @@ def print_banner():
     ┗━━┻━━┻┛┗┻━┻┛┗━━┻━┛┗━━┻┛┗┻┛┗┻┻┛┗┛    
     """
     print(text)
-    print(f"\t version : {__version__} \n")
+    print(f"\t version : {__version__}")
     if socket_request.str2bool(is_docker):
-        print(f"\t is_docker: {is_docker} \n\n")
+        print(f"\t is_docker: {is_docker}")
+    print(f"\t base_dir: {get_base_dir()}\n\n")
 
 
 def check_required(command=None):
@@ -157,6 +163,7 @@ def main():
         auto_prepare=args.auto_prepare,
         wait_state=args.wait_state,
         timeout=args.timeout,
+        wait_socket=args.wait_socket,
     )
 
     if args.command == "ls":

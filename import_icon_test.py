@@ -105,17 +105,18 @@ cc = socket_request.ControlChain(
 # debug(cc.join(seed_list=seed_list, gs_file=gs_file))
 # time.sleep(2)
 
-cc.stop()
+# cc.stop()
+#
+# debug(cc.import_icon(
+#         payload={
+#             "store_uri": "/goloop/icon/nvme/.storage/db_icon_dex,http://20.20.6.65:8000/api/v3",
+#             # "store_uri": "http://20.20.6.65:8000/api/v3",
+#             "config_url": "http://20.20.6.65:8000/config/nvme.json",
+#             "max_rps": 500
+#         }
+#     )
+# )
 
-debug(cc.import_icon(
-        payload={
-            "store_uri": "/goloop/icon/nvme/.storage/db_icon_dex,http://20.20.6.65:8000/api/v3",
-            # "store_uri": "http://20.20.6.65:8000/api/v3",
-            "config_url": "http://20.20.6.65:8000/config/nvme.json",
-            "max_rps": 500
-        }
-    )
-)
 
 # debug(cc.backup())
 # debug(cc.reset())
