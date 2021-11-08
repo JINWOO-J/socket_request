@@ -88,12 +88,17 @@ class ResponseField:
 
         return result
 
+    def set_dict(self, obj=None):
+        if isinstance(obj, dict):
+            self.json = obj
+            self.text = obj
+
     def get(self, key=None):
         return self.get_json(key)
 
 
 class ConnectSock:
-    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None, wait_socket=False):
+    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None, wait_socket=False, retry=None):
         self.unix_socket = unix_socket
         self.timeout = timeout
         self.method = "GET"
@@ -114,6 +119,7 @@ class ConnectSock:
         self.debug = debug
         self._initialize_vars()
         self.connect_error = None
+        self.retry = retry
 
         if debug:
             self.about = {}
@@ -153,8 +159,37 @@ class ConnectSock:
     #     return connect_health_sock
 
     def health_check(self):
+        text = {}
+        error_message = ""
+
+        self.connect_error = None
+        mandatory_items = ["buildVersion", "buildTags"]
+        try:
+            health = self._health_check()
+            if health:
+                res = self.request(url="/system", method="GET")
+                status_code = 200
+                text = res.get_json()
+
+                for item in mandatory_items:
+                    if text.get(item) is None:
+                        error_message += f"{item} not found, "
+                        status_code = 500
+            else:
+                status_code = 500
+                error_message = self.connect_error
+        except Exception as e:
+            error_message = e
+            status_code = 500
+
+        if error_message:
+            text['error'] = error_message
+
+        return ResponseField(status_code=status_code, text=text)
+
+    def _health_check(self):
         if os.path.exists(self.unix_socket) is False:
-            self.connect_error = f"[ERROR] health_check '{self.unix_socket}' socket file not found"
+            self.connect_error = f"_health_check '{self.unix_socket}' socket file not found"
             # print(red(self.connect_error))
             return False
         try:
@@ -162,28 +197,31 @@ class ConnectSock:
             self._connect_sock_with_exception()
             self.sock.close()
         except Exception as e:
-            self.connect_error = f"[ERROR] health_check cannot connect a socket: {e}"
+            self.connect_error = f"_health_check cannot connect a socket: {e}"
             # print(red(self.connect_error))
             return False
         return True
 
     # @_decorator_check_connect
     def _connect_sock(self, timeout=None):
-        if self.wait_socket:
-            wait_count = 0
+        if self.wait_socket or self.retry >= 0:
+            wait_count = 1
             # while os.path.exists(self.unix_socket) is False:
-            while self.health_check() is False:
-                message = f"[{wait_count}] Wait for \'{self.unix_socket}\' to be created"
+            while self._health_check() is False:
+                message = f"[{wait_count}/{self.retry}] Wait for \'{self.unix_socket}\' to be created"
                 if self.logger:
                     self.logging(message)
                 else:
                     print(message)
                 time.sleep(1)
                 wait_count += 1
+                if self.retry and isinstance(self.retry, int) and self.retry < wait_count:
+                    break
+
             # print(f"Successfully \'{self.unix_socket}\' to be created")
             self._connect_sock_with_exception(timeout=timeout)
 
-        elif self.health_check():
+        elif self._health_check():
             self._connect_sock_with_exception(timeout=timeout)
 
         else:
@@ -445,7 +483,8 @@ class ControlChain(ConnectSock):
             increase_sec=0.5,
             wait_socket=False,
             logger=None,
-            check_args=True
+            check_args=True,
+            retry=None
     ):
         """
         ChainControl class init
@@ -484,9 +523,13 @@ class ControlChain(ConnectSock):
         self.logger = logger
         self.check_args = check_args
 
+        self.retry = retry
+
+        self.last_block = {}
+
         self.logging(f"Load ControlChain Version={__version__}")
 
-        if self.cid is None and self.health_check():
+        if self.cid is None and self._health_check():
             self.debug_print("cid not found. Guess it will get the cid.")
             self.cid = self.guess_cid()
             self.debug_print(f"guess_cid = {self.cid}")
@@ -498,9 +541,9 @@ class ControlChain(ConnectSock):
     def logging(self, message=None, level="info"):
         if self.logger:
             if level == "info" and hasattr(self.logger, "info"):
-                self.logger.info(f"[CC] {message}")
+                self.logger.info(f"[SR] {message}")
             elif level == "error" and hasattr(self.logger, "error"):
-                self.logger.error(f"[CC] {message}")
+                self.logger.error(f"[SR] {message}")
 
     def _decorator_stop_start(func):
         def stop_start(self, *args, **kwargs):
@@ -614,7 +657,7 @@ class ControlChain(ConnectSock):
             return False
 
     # def get_state(self):
-    #     if self.health_check():
+    #     if self._health_check():
     #         res = self.view_chain().get_json()
     #         if isinstance(res, list) and len(res) == 0:
     #             self.state = {}
@@ -818,15 +861,37 @@ class ControlChain(ConnectSock):
         res = self.request(url=url, payload=payload, method="GET", return_dict=True)
 
         if res.status_code != 200:
-            self.logging(f"[CC] view_chain res.status_code={res.status_code}, res = {res.text}")
-
+            self.logging(f"view_chain res.status_code={res.status_code}, res = {res.text}")
         if hasattr(res, 'json'):
             self.state = res.json
+            try:
+                self.get_tps()
+                res.set_dict(self.state)
+            except:
+                pass
             # self.connect_error = res.get('error')
         else:
             self.state = {}
             self.connect_error = res.text
         return res
+
+    def get_tps(self):
+        if self.state.get("height"):
+            if self.last_block.get('height') is None:
+                self.last_block = {
+                    "height": self.state.get("height"),
+                    "time": time.time()
+                }
+
+            diff_block = self.state['height'] - self.last_block['height']
+            diff_time = time.time() - self.last_block['time']
+            tps = diff_block / diff_time
+            # print(diff_block, diff_time, tps)
+            self.state['tps'] = round(tps)
+            self.last_block = {
+                "height": self.state.get("height"),
+                "time": time.time()
+            }
 
     @_decorator_kwargs_checker
     @_decorator_stop_start
@@ -1187,7 +1252,7 @@ def wait_state_loop(
     act_desc = f"desc={description}, function={exec_function_name}, args={func_args}"
     spinner = Halo(text=f"[START] Wait for {description} , {exec_function_name}, {func_args}", spinner='dots')
     if logger and hasattr(logger, "info"):
-        logger.info(f"[CC] [START] {act_desc}")
+        logger.info(f"[SR] [START] {act_desc}")
 
     spinner.start()
 
@@ -1235,7 +1300,7 @@ def wait_state_loop(
         spinner.start(text=text)
 
         if logger and hasattr(logger, "info"):
-            logger.info(f"[CC] {text}")
+            logger.info(f"[SR] {text}")
 
         try:
             assert time.time() < start_time + timeout_limit
@@ -1244,7 +1309,7 @@ def wait_state_loop(
             spinner.start(text=text)
 
             if logger and hasattr(logger, "error"):
-                logger.info(f"[CC] {text}")
+                logger.info(f"[SR] {text}")
 
         count = count + increase_sec
         time.sleep(increase_sec)
@@ -1252,7 +1317,7 @@ def wait_state_loop(
         spinner.stop()
 
     if logger and hasattr(logger, "info"):
-        logger.info(f"[CC] [DONE] {act_desc}")
+        logger.info(f"[SR] [DONE] {act_desc}")
 
     if health_status:
         return response

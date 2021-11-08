@@ -47,7 +47,9 @@ def get_parser():
     parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 60)', default=60)
 
     parser.add_argument('-w', '--wait-state', metavar='wait_state', type=socket_request.str2bool, help=f'wait_state (default: True)', default=True)
-    parser.add_argument('-ws', '--wait-socket', action='store_true',  help=f'wait for unix domain socket',  default=False)
+    parser.add_argument('-r', '--retry', metavar='retry', type=int, help=f'wait_state (default: True)', default=0)
+
+    parser.add_argument('-ws', '--wait-socket', action='store_false',  help=f'wait for unix domain socket',  default=True)
     parser.add_argument('-ap', '--auto_prepare', metavar='auto_prepare', help=f'auto_prepare (default: True)', default=True)
 
     parser.add_argument('-p', '--payload', metavar='payload_file', help=f'payload file', type=argparse.FileType('r'), default=None)
@@ -163,7 +165,8 @@ def main():
         auto_prepare=args.auto_prepare,
         wait_state=args.wait_state,
         timeout=args.timeout,
-        wait_socket=args.wait_socket,
+        # wait_socket=args.wait_socket,
+        retry=0
     )
 
     if args.command == "ls":
