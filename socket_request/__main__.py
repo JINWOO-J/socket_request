@@ -98,7 +98,7 @@ class ResponseField:
 
 
 class ConnectSock:
-    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None, wait_socket=False, retry=None):
+    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None, wait_socket=False, retry=3):
         self.unix_socket = unix_socket
         self.timeout = timeout
         self.method = "GET"
@@ -484,7 +484,7 @@ class ControlChain(ConnectSock):
             wait_socket=False,
             logger=None,
             check_args=True,
-            retry=None
+            retry=3
     ):
         """
         ChainControl class init

@@ -14,7 +14,7 @@ cc = socket_request.ControlChain(
     auto_prepare=True,
     wait_state=True,
     # wait_socket=True,
-    retry=10
+    retry=None
     # check_args=False,
     # increase_sec=2
 )

@@ -165,7 +165,7 @@ def main():
         auto_prepare=args.auto_prepare,
         wait_state=args.wait_state,
         timeout=args.timeout,
-        # wait_socket=args.wait_socket,
+        wait_socket=args.wait_socket,
         retry=0
     )
 
@@ -210,7 +210,7 @@ def main():
 
         if args.forever is False:
             sys.exit()
-        time.sleep(0.2)
+        time.sleep(1)
 
 
 if __name__ == "__main__":
