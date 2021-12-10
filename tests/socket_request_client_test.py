@@ -47,9 +47,9 @@ seed_list = [
     "20.20.5.176:7100"
 ]
 
-gs_file = "conf/gs.zip"
-with open(gs_file, "rb") as genesis_fd:
-    fd_data = genesis_fd.read()
+# gs_file = "conf/gs.zip"
+# with open(gs_file, "rb") as genesis_fd:
+#     fd_data = genesis_fd.read()
 
 config_payload = dict(
     seed_list=",".join(seed_list),
@@ -65,7 +65,7 @@ config_payload = dict(
 )
 
 cid = "0x153140"
-socket_address = './cli.sock'
+socket_address = './data/cli.sock'
 
 cc = socket_request.ControlChain(
     unix_socket=socket_address,
@@ -140,6 +140,12 @@ cc = socket_request.ControlChain(
 # debug(res.status_code)
 #
 # exit()
+
+# debug(cc.chain_config(payload={"autoStart": False}))
+# debug(cc.chain_config(payload={"autoStart": True, "txTimeout": 60001}))
+# debug(cc.chain_config(payload={"key": "autoStart", "value": 'true'}))
+debug(cc.system_config(payload={"rpcIncludeDebug": True}))
+# debug(cc.system_config(payload={"key": "rpcIncludeDebug", "value": True}))
 
 debug(cc.view_chain())
 # debug(cc.backup())

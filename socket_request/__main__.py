@@ -893,25 +893,21 @@ class ControlChain(ConnectSock):
                 "time": time.time()
             }
 
-    @_decorator_kwargs_checker
-    @_decorator_stop_start
-    def chain_config(self, payload=None):
-        # payload = _payload_bool2string(payload)
-
-        # res = self.request(url=f"/chain/{self.cid}/configure", payload=payload,  method="POST")
+    def multi_payload_request(self, url=None, payload=None, method="POST"):
         result = {
             "state": "OK",
             "payload": payload,
             "error": []
         }
-
         status_code = 201
 
         if not isinstance(payload, dict):
             raise Exception(red(f"[ERROR] Invalid payload '{payload}'"))
 
-        for key, value in payload.items():
+        if payload.get("key") and payload.get("value"):
+            return self.request(url=f"/chain/{self.cid}/configure",  payload=payload, method="POST")
 
+        for key, value in payload.items():
             if isinstance(value, bool):
                 value = bool2str(value)
             elif isinstance(value, int):
@@ -921,7 +917,7 @@ class ControlChain(ConnectSock):
 
             debug(key, value) if self.debug else False
             each_payload = {"key": key, "value": value}
-            res = self.request(url=f"/chain/{self.cid}/configure", payload=each_payload,  method="POST")
+            res = self.request(url=url, payload=each_payload,  method=method)
             debug(res) if self.debug else False
 
             if res.status_code != 200:
@@ -936,9 +932,12 @@ class ControlChain(ConnectSock):
                 })
                 result['state'] = "FAIL"
                 status_code = 400
-
         return ResponseField(status_code=status_code, text=result)
-        # return result
+
+    @_decorator_kwargs_checker
+    @_decorator_stop_start
+    def chain_config(self, payload=None):
+        return self.multi_payload_request(url=f"/chain/{self.cid}/configure", payload=payload, method="POST")
 
     def view_system_config(self, detail=True):
         if detail:
@@ -951,8 +950,7 @@ class ControlChain(ConnectSock):
     @_decorator_kwargs_checker
     def system_config(self, payload=None):
         payload = _payload_bool2string(payload)
-        res = self.request(url="/system/configure",  payload=payload, method="POST")
-        return res
+        return self.multi_payload_request(url="/system/configure", payload=payload, method="POST")
 
 
 class DockerSock(ConnectSock):

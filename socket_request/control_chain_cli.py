@@ -38,7 +38,8 @@ def get_parser():
     )
     parser.add_argument(
         'command',
-        choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'join', 'import_icon', "import_finish", 'backup', 'restore', 'chain_config', 'ls'],
+        choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'view_system_config', 'join', 'backup', 'backup_list', 'restore',
+                 'chain_config', 'system_config', 'ls'],
         help='')
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
                         default=f"{get_base_dir()}/data/cli.sock")
@@ -63,7 +64,7 @@ def get_parser():
     return parser.parse_args()
 
 
-def print_banner():
+def print_banner(args):
     text = """
     ╋╋╋╋╋╋╋╋╋┏┓╋╋╋╋╋┏┓╋╋╋╋┏┓
     ╋╋╋╋╋╋╋╋┏┛┗┓╋╋╋╋┃┃╋╋╋╋┃┃
@@ -76,13 +77,14 @@ def print_banner():
     print(f"\t version : {__version__}")
     if socket_request.str2bool(is_docker):
         print(f"\t is_docker: {is_docker}")
-    print(f"\t base_dir: {get_base_dir()}\n\n")
+    print(f"\t base_dir: {get_base_dir()}")
+    print(f"\t unixsocket: {args.unixsocket}\n\n")
 
 
 def check_required(command=None):
     required_params = {
-        "payload": ["import_icon", "chain_config"],
-        "inspect": ["view_chain"],
+        "payload": ["import_icon", "chain_config", "system_config"],
+        "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
         "gs_file": ["join"],
     }
@@ -94,6 +96,11 @@ def check_required(command=None):
             required_keys.append(required_key)
 
     return required_keys
+
+
+def get_unixsocket(args):
+    if os.environ.get("GOLOOP_NODE_SOCK") and os.path.isfile(os.environ.get("GOLOOP_NODE_SOCK")):
+        return os.environ.get("GOLOOP_NODE_SOCK")
 
 
 def run_function(func, required_keys, args):
@@ -109,7 +116,6 @@ def run_function(func, required_keys, args):
                 except Exception as e:
                     raise Exception(f"Invalid JSON - {e}, json_data={json_data}")
         debug(payload)
-
     if isinstance(args.payload_dict, dict):
         payload = args.payload_dict
 
@@ -139,19 +145,18 @@ def run_function(func, required_keys, args):
 
 
 def main():
-
-    print_banner()
     args = get_parser()
+
     if args.debug:
         print(args)
-
-    # inspect = None
-    # result = None
-
-    if args.base_dir:
+    if os.environ.get("GOLOOP_NODE_SOCK"):
+        args.unixsocket = os.environ.get("GOLOOP_NODE_SOCK")
+    elif args.base_dir:
         args.unixsocket = f"{args.base_dir}/data/cli.sock"
     else:
         args.base_dir = get_base_dir()
+
+    print_banner(args)
 
     if args.inspect:
         args.payload = {"inspect": args.inspect}
