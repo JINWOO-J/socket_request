@@ -53,12 +53,12 @@ usage: control_chain [-h] [-s unixsocket] [-d] [-t timeout] [-w wait_state]
                      [-r retry] [-ws] [-ap auto_prepare] [-p payload_file]
                      [-f] [-i] [--seedAddress SEEDADDRESS] [-b BASE_DIR]
                      [-pd payload dict]
-                     {start,stop,reset,leave,view_chain,join,import_icon,import_finish,backup,restore,chain_config,ls}
+                    {start,stop,reset,leave,view_chain,view_system_config,join,backup,backup_list,restore,chain_config,system_config,ls,prune}
 
 Command Line Interface for control_chain
 
 positional arguments:
-  {start,stop,reset,leave,view_chain,join,import_icon,import_finish,backup,restore,chain_config,ls}
+    {start,stop,reset,leave,view_chain,view_system_config,join,backup,backup_list,restore,chain_config,system_config,ls,prune}
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -85,6 +85,10 @@ optional arguments:
                         base dir for goloop
   -pd payload dict, --payload-dict payload dict
                         payload dict
+  -bh BLOCKHEIGHT, --blockheight BLOCKHEIGHT
+    BlockHeight for pruning
+  -rn RESTORE_NAME, --restore-name RESTORE_NAME
+    Restore filename for restore 
 ```
 
 

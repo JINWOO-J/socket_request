@@ -39,7 +39,7 @@ def get_parser():
     parser.add_argument(
         'command',
         choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'view_system_config', 'join', 'backup', 'backup_list', 'restore',
-                 'chain_config', 'system_config', 'ls'],
+                 'chain_config', 'system_config', 'ls', "prune"],
         help='')
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
                         default=f"{get_base_dir()}/data/cli.sock")
@@ -58,8 +58,13 @@ def get_parser():
     parser.add_argument('-i', '--inspect', action='store_true',  help=f'inspect for view chain', default=False)
     parser.add_argument('--seedAddress', type=str, help=f'seed list string', default=None)
     parser.add_argument('-b', '--base-dir', type=str, help=f'base dir for goloop', default=None)
+    parser.add_argument('-bh', '--blockheight', metavar="block height number", type=int, help=f'BlockHeight for pruning', default=None)
+    parser.add_argument('-rn', '--restore-name', metavar="backed up file name", type=str, help=f'Restore filename for restore', default=None)
+    # parser.add_argument('-gs',  metavar="gs", type=str, help=f'genesis file for join', default=None)
 
     parser.add_argument('-pd', '--payload-dict', metavar='payload dict', help=f'payload dict', type=json.loads, default=None)
+    parser.add_argument('--interval', type=float,  help=f'retry interval time (seconds)', default=1)
+
 
     return parser.parse_args()
 
@@ -87,6 +92,9 @@ def check_required(command=None):
         "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
         "gs_file": ["join"],
+        "blockheight": ["prune"],
+        "restore_name": ["restore"],
+
     }
 
     required_keys = []
@@ -105,6 +113,10 @@ def get_unixsocket(args):
 
 def run_function(func, required_keys, args):
     payload = None
+    gs_file = None
+    seedAddress = None
+    result = None
+
     if args.payload:
         if isinstance(args.payload, dict):
             inspect = args.payload
@@ -123,18 +135,37 @@ def run_function(func, required_keys, args):
         seedAddress = args.seedAddress.split(",")
         gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
 
+    # if args.blockheight:
+    #     blockheight = args.blockheight
+
+    # if args.blockheight:
+    #     blockheight = args.blockheight
+    # debug(locals().get("args"))
+    params_check_commands = ["prune", "restore"]
+
     if required_keys:
         arguments = {}
         for required_arg in required_keys:
             if args.debug:
                 debug(locals())
+
             if locals().get(required_arg):
                 arguments[required_arg] = locals()[required_arg]
+            # It will be found the args namespace
+            # elif getattr(locals().get("args"), required_arg):
+
+            elif args.command in params_check_commands:
+                try:
+                    arguments[required_arg] = getattr(locals().get("args"), required_arg)
+                except Exception as e:
+                    print(f"Exception -- {e}")
+                    pass
+
+                # arguments[required_arg] = getattr(locals().get("args"), required_arg)
 
         if args.debug:
             debug(required_arg)
             debug(arguments)
-
         if len(arguments) > 0:
             result = func(**arguments)
         else:
@@ -146,6 +177,8 @@ def run_function(func, required_keys, args):
 
 def main():
     args = get_parser()
+
+    view_table_format = ["backup_list"]
 
     if args.debug:
         print(args)
@@ -179,14 +212,13 @@ def main():
 
     func = getattr(cc, args.command)
     required_keys = check_required(args.command)
-    result_text = None
-    result = {}
     if args.debug:
         print(f"command = {args.command},  required_keys = {required_keys}")
     while True:
         # if args.debug:
         #     debug(locals())
         result = run_function(func, required_keys, args)
+        result_text = None
         if result:
             if args.inspect:
                 socket_request.dump(result.json)
@@ -202,7 +234,10 @@ def main():
                     elif result.text:
                         result_text = result.text
 
-                    socket_request.color_print(f"{result_text}", text_color)
+                    if args.command in view_table_format:
+                        socket_request.print_table(title=f"{args.command} result", source_dict=result_text)
+                    else:
+                        socket_request.color_print(f"{result_text}", text_color)
 
                     if text_color == "RED":
                         socket_request.color_print(str(cc.get_state()))
@@ -211,11 +246,12 @@ def main():
 
         else:
             print(cc.view_chain())
+            print(result)
             socket_request.color_print(f"[ERROR] {args.command}, {result.text}", "FAIL")
 
         if args.forever is False:
             sys.exit()
-        time.sleep(1)
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":

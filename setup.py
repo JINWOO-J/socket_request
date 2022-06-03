@@ -6,7 +6,6 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 about = {}
 
-print(here)
 print(os.path.join(here, 'socket_request', '__version__.py'))
 
 with open(os.path.join(here, 'socket_request', '__version__.py'), 'r', 'utf-8') as f:
@@ -26,6 +25,8 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     python_requires=">=3.7",
     url=about['__url__'],
+    # packages=setuptools.find_packages(),
+    include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=open('requirements.txt').read(),
     classifiers=[

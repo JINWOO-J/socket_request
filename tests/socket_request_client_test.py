@@ -2,9 +2,20 @@
 # -*- coding: utf-8 -*-
 import os
 import json
-import socket_request
+import sys
+parent_dir = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
+# sys.path.append(parent_dir)
+sys.path.insert(0, parent_dir)
 
+import socket_request
 from devtools import debug
+
+for idx, path in enumerate(sys.path, 1):
+    print(f'{idx} - {path}')
+
+print(f'\nrsocket-request module location - {socket_request.__file__}')
+
+
 
 
 
@@ -131,7 +142,7 @@ cc = socket_request.ControlChain(
 # debug(cc.backup())
 # debug(cc.backup_list())
 # debug(cc.restore(payload={"name": "0x18ed1_0x53_icon_dex_20210830-032339.zip", "overwrite": True}))
-# debug(cc.restore(name="0x18ed1_0x53_icon_dex_20210830-032339.zip"))
+# debug(cc.restore(restore_name="0x18ed1_0x53_icon_dex_20210830-032339.zip"))
 
 
 # res = cc.start()
@@ -144,19 +155,24 @@ cc = socket_request.ControlChain(
 # debug(cc.chain_config(payload={"autoStart": False}))
 # debug(cc.chain_config(payload={"autoStart": True, "txTimeout": 60001}))
 # debug(cc.chain_config(payload={"key": "autoStart", "value": 'true'}))
-debug(cc.system_config(payload={"rpcIncludeDebug": True}))
+# debug(cc.system_config(payload={"rpcIncludeDebug": True}))
 # debug(cc.system_config(payload={"key": "rpcIncludeDebug", "value": True}))
 
 debug(cc.view_chain())
-# debug(cc.backup())
+# debug(cc.start())
+# debug(cc.backup_list())
+# debug(cc.restore(restore_name="0x64c2c6_0x2_icon_dex_20220519-091158.zip"))
+debug(cc.prune(1))
+# debug(cc.stop())
+debug(cc.backup())
 # debug("<<<<<<<<sdsdsdsd>>>>>>>>", cc.view_chain())
 # debug(cc.view_chain(detail=True).__dict__)
 # debug(cc.view_chain(inspect=True).__dict__)
 # debug(cc.leave())
 # # debug(cc.reset())
-# debug(cc.join(seed_list=seed_list))
+# debug(cc.join(role=3, seedAddress=["20.20.6.77:7100", "20.20.6.79:7100", "20.20.6.80:7100"]))
 # debug(cc.start())
-
+# debug(cc.backup_list())
 
 
 # docker = socket_request.DockerSock()

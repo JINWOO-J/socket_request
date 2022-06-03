@@ -28,6 +28,10 @@ ERROR_COLOR=\033[31m
 WARN_COLOR=\033[93m
 
 TEST_FILES := $(shell find tests -name '*.yml')
+LOCAL_SERVER := "20.20.5.172"
+VERSION := $(shell python3 -c "from socket_request import __version__;print(__version__.__version__)")
+
+#git_describe_ver = $(shell git describe --tags | sed -E -e 's/^v//' -e 's/(.*)-.*/\1/')
 
 .PHONY: all build push test tag_latest release ssh bash
 
@@ -89,3 +93,8 @@ upload:
 
 gendocs:
 	@$(shell ./makeMakeDown.sh)
+
+local_deploy: build
+	scp dist/socket_request-$(VERSION)-py3-none-any.whl root@$(LOCAL_SERVER):/app/;
+	ssh root@$(LOCAL_SERVER) pip3 install /app/socket_request-$(VERSION)-py3-none-any.whl --force-reinstall
+
