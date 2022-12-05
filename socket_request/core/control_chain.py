@@ -1,5 +1,6 @@
 from functools import partial, wraps
 from .connect_sock import ConnectSock
+import requests
 
 try:
     from ..__version__ import __version__
@@ -10,10 +11,21 @@ from ..utils.data import ResponseField, RequestField
 from ..utils.utils import *
 
 
+def _make_json_rpc(method="", params: dict = {}):
+    return {
+        "jsonrpc": "2.0",
+        "id": int(datetime.now().timestamp()),
+        "method": method,
+        "params": params
+    }
+
+
 class ControlChain(ConnectSock):
     success_state = {
         "backup": "backup done",
         "prune": "pruning done",
+        # "reset": "started",
+        "reset": "reset finished",
         "restore": "success",
         "start": "started",
         "stop": "stopped",
@@ -29,7 +41,8 @@ class ControlChain(ConnectSock):
             wait_socket=False,
             logger=None,
             check_args=True,
-            retry=3
+            retry=3,
+            endpoint=None
     ):
         """
         ChainControl class init
@@ -44,13 +57,16 @@ class ControlChain(ConnectSock):
         """
 
         self.headers = {
+            # "Host": "localhost",
             "Host": "*",
             "Accept": "*/*",
             "Content-Type": "application/json",
-            "User-Agent": "socket-request"
+            "User-Agent": "socket-request",
+            # "Accept-Encoding": "gzip",
+
         }
 
-        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers, wait_socket=wait_socket)
+        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers, wait_socket=wait_socket, http_version="1.0")
         self.url = url
         self.unix_socket = unix_socket
         self.cid = cid
@@ -72,18 +88,15 @@ class ControlChain(ConnectSock):
         self.seedAddress = []
         self.retry = retry
 
+        self.endpoint = endpoint
         self.last_block = {}
 
         self.logging(f"Load ControlChain Version={__version__}")
 
         if self.cid is None and self._health_check():
             self.debug_print("cid not found. Guess it will get the cid.")
-            self.cid = self.guess_cid()
+            self.guess_cid()
             self.debug_print(f"guess_cid = {self.cid}")
-
-    # def _get_args_dict(fn, args, kwargs):
-    #     args_names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
-    #     return {**dict(zip(args_names, args)), **kwargs}
 
     def logging(self, message=None, level="info"):
         if self.logger:
@@ -153,22 +166,15 @@ class ControlChain(ConnectSock):
                 func_name = func.__name__
                 if func_name != "stop_start":
                     self.debug_print(f"Start '{func_name}' function", "WHITE")
-                    # color_print(f"['{func_name}'] Start function ", "WHITE")
-                # defined default value for function
 
                 if self.auto_prepare:
                     if func_name not in ["view_chain", "join"]:
                         self.view_chain()
                     if self.state.get("state") and self.success_state.get(func_name) == self.state.get("state"):
-                        # print(red(f"Already {self.state.get('state')}"))
-                        # return f"Already {self.state.get('state')}"
                         return ResponseField(status_code=202, text=f"Already {self.state.get('state')}")
 
                 if check_mandatory is not True:
-                    # if func_name == "restore":
-                    #     self.check_backup_file("sdsd")
                     func_params = get_function_parameters(func)
-                    # input parameters for function
                     func_params['kwargs'].update(**kwargs)
                     for key, value in func_params.get("kwargs").items():
                         if value is not None:
@@ -179,17 +185,12 @@ class ControlChain(ConnectSock):
                                 and value is None \
                                 and (default_param is None
                                      or default_param == {} or default_param == []):
-                            raise Exception(red(f"Required '{key}' parameter for {func_name}()"))
+                            raise Exception(red(f"Required '{key}' parameter for {func_name}() , func_params={func_params}, "
+                                                f"self.check_args={self.check_args}, "
+                                                f"default_param={default_param}"))
 
                     self.debug_print(f"_decorator_kwargs_checker(), kwargs = {kwargs}")
-
-                # if func_name == "restore":
-                #     print(f"{func_name} " * 100)
-                #     a = func(self, *args, **kwargs)
-                #     ret = self._decorator_stop_start(a)
-                # else:
                 ret = func(self, *args, **kwargs)
-
                 self.payload = {}
                 self.files = []
                 self.r_headers = []
@@ -199,7 +200,6 @@ class ControlChain(ConnectSock):
                 self.gs_file = ""
                 return ret
             return from_kwargs
-        # return real_deco
         return real_deco(check_mandatory) if callable(check_mandatory) else real_deco
 
     @_decorator_kwargs_checker(check_mandatory=False)
@@ -223,21 +223,7 @@ class ControlChain(ConnectSock):
             print("[ERROR] Required cid")
             return False
 
-    # def get_state(self):
-    #     if self._health_check():
-    #         res = self.view_chain().get_json()
-    #         if isinstance(res, list) and len(res) == 0:
-    #             self.state = {}
-    #         else:
-    #             self.state = res
-    #     else:
-    #         self.state = {
-    #             "error": self.connect_error
-    #         }
-    #     return self.state
-
     def get_state(self):
-        # res = self.view_chain().get_json()
         result = self.view_chain()
         if result.status_code == 200:
             res = self.view_chain().get_json()
@@ -251,14 +237,13 @@ class ControlChain(ConnectSock):
             self.state['error'] = result.text
         return self.state
 
-    @_decorator_wait_state
     @_decorator_kwargs_checker
+    @_decorator_wait_state
     def start(self, cid=None, **kwargs):
         if cid:
             self.cid = cid
         if self.cid is None:
             self.guess_cid()
-
         res = self.request(url=f"/chain/{self.cid}/start", payload={}, method="POST")
         return res
 
@@ -307,15 +292,66 @@ class ControlChain(ConnectSock):
         res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
         return res
 
+    def rpc_call(self, payload: dict = {}):
+        if self.endpoint:
+            res = requests.post(url=f"{self.endpoint}/api/v3", json=payload)
+            res.json = res.json()
+            if isinstance(res.json, dict) and res.json.get('error'):
+                res.error = f"Endpoint returns error: {res.json['error'].get('message')}"
+            return res
+
+        return self.request(url=f"/api/v3/icon_dex", payload=payload, method="POST")
+
+    def _get_block_hash(self, blockheight):
+        res = self.rpc_call(
+            payload=_make_json_rpc(
+                method="icx_getBlockByHeight",
+                params={'height': hex(blockheight)}
+            )
+        )
+        if res.json and res.json.get('result') and res.json['result'].get('block_hash'):
+            return f"0x{res.json['result']['block_hash']}"
+        else:
+            # raise ValueError(f"{res.text}")
+            raise ValueError(f"{res.error}")
+        ##  TODO : It will be improve the result
+
+    # def reset_test(self, blockheight=None, cid=None):
+    #     payload = {
+    #         'height': 100,
+    #         'blockHash': f"0xcb63709d79dbc54c7b48033411b80d966524d9dc743cfad1d6c5d4b38bd7113f"
+    #     }
+    #     payload = {"height":100,"blockHash":"0xcb63709d79dbc54c7b48033411b80d966524d9dc743cfad1d6c5d4b38bd7113f"}
+    #     res = self.request(
+    #         url=f"/chain/{self.cid}/reset", payload=payload, method="POST")
+    #     # self.start(cid)
+    #     return res
+
+
+    @_decorator_stop_start
     @_decorator_kwargs_checker
-    def reset(self, cid=None):
+    def reset(self, blockheight=None, cid=None):
+
+        block_hash = self._get_block_hash(blockheight)
+        if not block_hash:
+            raise ValueError(f"block_hash not found, blockheight={blockheight}")
+
+        payload = {
+            'height': blockheight,
+            'blockHash': block_hash
+        }
+        color_print(f"Reset block_height={hex(blockheight)}({blockheight:,}), blockHash={payload.get('blockHash')}")
+        ##  TODO  #######################################
         if cid:
             self.cid = cid
-        if self.cid is None:
+
+        if not self.endpoint and not self.cid:
             self.guess_cid()
 
-        self.stop(cid)
-        res = self.request(url=f"/chain/{self.cid}/reset", payload={}, method="POST")
+        # self.stop(cid)
+        res = self.request(
+            url=f"/chain/{self.cid}/reset", payload=payload, method="POST")
+        # self.start(cid)
         return res
 
     def import_icon(self, payload=None):
@@ -436,8 +472,8 @@ class ControlChain(ConnectSock):
     def prune(self, blockheight=None):
         if blockheight and blockheight >= 0:
             payload = {
-                # "dbType": "gorocksdb",
-                "dbType": "goleveldb",
+                # "dbType": "rocksdb",
+                # "dbType": "goleveldb",
                 "height": blockheight
             }
             res = self.request(url=f"/chain/{self.cid}/prune", payload=payload, method="POST")

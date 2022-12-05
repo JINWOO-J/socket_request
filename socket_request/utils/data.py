@@ -38,7 +38,7 @@ class ResponseField:
                 }
 
         if isinstance(result, dict):
-            result["error"] = self.error
+            self.error = result.get("error")
 
         if key:
             return result.get(key)

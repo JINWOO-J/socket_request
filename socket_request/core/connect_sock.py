@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import socket
 import time
@@ -10,12 +11,15 @@ writer = codecs.lookup("utf-8")[3]
 
 
 class ConnectSock:
-    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False, headers=None, wait_socket=False, retry=3):
+    def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False,
+                 headers=None, wait_socket=False, retry=3, http_version="1.0"):
+        self.payload = None
         self.unix_socket = unix_socket
         self.timeout = timeout
         self.method = "GET"
         self.url = "/"
         self.wait_socket = wait_socket
+        self.http_version = http_version
 
         if isinstance(headers, dict):
             self.default_headers = headers
@@ -171,7 +175,8 @@ class ConnectSock:
 
     def _prepare_header(self):
         self.r_headers = [
-            f"{self.method} http://*{self.url} HTTP/1.0",
+            f"{self.method} http://*{self.url} HTTP/{self.http_version}",
+            # f"{self.method} {self.url} HTTP/{self.http_version}",
         ]
         if "HTTP/1.1" in self.r_headers[0]:
             self.headers['Connection'] = "close"
@@ -218,6 +223,7 @@ class ConnectSock:
             self.r_headers_string = f"{self.r_headers_string}".encode("utf-8")
         if not isinstance(self.r_body_string, bytes):
             self.r_body_string = f"{self.r_body_string}\r\n\r\n".encode("utf-8")
+            # self.r_body_string = f"{self.r_body_string}".encode("utf-8")
         return self.r_headers_string + self.r_body_string
 
     def encode_multipart_formdata(self, fields, boundary=None):
@@ -295,9 +301,9 @@ class ConnectSock:
         :return:
         """
         self._initialize_vars()
-
+        self.payload = payload
         if self.debug:
-            print(f"unix_socket={self.unix_socket}, url={url}, method={method}, headers={headers}, payload={payload}, files={files}")
+            color_print(f"unix_socket={self.unix_socket}, url={url}, method={method}, headers={headers}, payload={payload}, files={files}", "green")
 
         self._connect_sock(timeout=timeout)
         if self.sock:
@@ -313,13 +319,13 @@ class ConnectSock:
 
             if self.debug:
                 debug("<<< request_data >>>", request_data)
-
             self.sock.send(request_data)
             contents = ""
             while True:
                 response_data = self.sock.recv(1024)
                 if not response_data:
                     break
+                # print(response_data.decode('utf-8'))
                 contents += str(response_data.decode())
             self.sock.close()
             # debug(contents)
@@ -356,6 +362,10 @@ class ConnectSock:
                 self.Response.status_code = int(status)
                 self.Response.json = json_dict
                 self.Response.text = text
+
+                if isinstance(self.Response.json, dict) and self.Response.json.get('error'):
+                    self.Response.error = self.Response.json['error'].get('message')
+
                 self.debug_resp_print(self.Response)
         return self.Response
         # return self.response
@@ -377,5 +387,5 @@ class ConnectSock:
                     debug(result.text)
             else:
                 color = "fail"
-            self.debug_print(f"status_code={result.status_code} url={self.url}, payload={self.payload}, payload={self.files}, result={text[0]}",
+            self.debug_print(f"status_code={result.status_code} url={self.url}, payload={self.payload}, files={self.files}, result={text[0]}",
                              color)

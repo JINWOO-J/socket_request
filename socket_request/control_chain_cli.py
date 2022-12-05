@@ -39,7 +39,7 @@ def get_parser():
     parser.add_argument(
         'command',
         choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'view_system_config', 'join', 'backup', 'backup_list', 'restore',
-                 'chain_config', 'system_config', 'ls', "prune"],
+                 'chain_config', 'system_config', 'ls', "prune", 'rpc_call'],
         help='')
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
                         default=f"{get_base_dir()}/data/cli.sock")
@@ -65,6 +65,8 @@ def get_parser():
     parser.add_argument('-pd', '--payload-dict', metavar='payload dict', help=f'payload dict', type=json.loads, default=None)
     parser.add_argument('--interval', type=float,  help=f'retry interval time (seconds)', default=1)
 
+    parser.add_argument('--endpoint', metavar='endpoint url', help=f'endpoint url', type=str, default=None)
+    parser.add_argument('--cid', metavar='cid', help=f'cid', type=str, default=None)
 
     return parser.parse_args()
 
@@ -92,7 +94,7 @@ def check_required(command=None):
         "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
         "gs_file": ["join"],
-        "blockheight": ["prune"],
+        "blockheight": ["prune", "reset"],
         "restore_name": ["restore"],
 
     }
@@ -127,7 +129,7 @@ def run_function(func, required_keys, args):
                     payload = json.loads(json_data)
                 except Exception as e:
                     raise Exception(f"Invalid JSON - {e}, json_data={json_data}")
-        debug(payload)
+
     if isinstance(args.payload_dict, dict):
         payload = args.payload_dict
 
@@ -135,20 +137,13 @@ def run_function(func, required_keys, args):
         seedAddress = args.seedAddress.split(",")
         gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
 
-    # if args.blockheight:
-    #     blockheight = args.blockheight
-
-    # if args.blockheight:
-    #     blockheight = args.blockheight
-    # debug(locals().get("args"))
-    params_check_commands = ["prune", "restore"]
+    params_check_commands = ["prune", "restore", "reset"]
 
     if required_keys:
         arguments = {}
         for required_arg in required_keys:
             if args.debug:
                 debug(locals())
-
             if locals().get(required_arg):
                 arguments[required_arg] = locals()[required_arg]
             # It will be found the args namespace
@@ -177,81 +172,83 @@ def run_function(func, required_keys, args):
 
 def main():
     args = get_parser()
-
     view_table_format = ["backup_list"]
-
-    if args.debug:
-        print(args)
-    if os.environ.get("GOLOOP_NODE_SOCK"):
-        args.unixsocket = os.environ.get("GOLOOP_NODE_SOCK")
-    elif args.base_dir:
-        args.unixsocket = f"{args.base_dir}/data/cli.sock"
-    else:
-        args.base_dir = get_base_dir()
-
-    print_banner(args)
-
-    if args.inspect:
-        args.payload = {"inspect": args.inspect}
-    if args.command == "import_icon" and args.payload is None:
-        args.payload = open(f"{args.base_dir}/config/import_config.json")
-
-    cc = socket_request.ControlChain(
-        unix_socket=args.unixsocket,
-        # cid=cid,
-        debug=args.debug,
-        auto_prepare=args.auto_prepare,
-        wait_state=args.wait_state,
-        timeout=args.timeout,
-        wait_socket=args.wait_socket,
-        retry=0
-    )
-
-    if args.command == "ls":
-        args.command = "view_chain"
-
-    func = getattr(cc, args.command)
-    required_keys = check_required(args.command)
-    if args.debug:
-        print(f"command = {args.command},  required_keys = {required_keys}")
-    while True:
-        # if args.debug:
-        #     debug(locals())
-        result = run_function(func, required_keys, args)
-        result_text = None
-        if result:
-            if args.inspect:
-                socket_request.dump(result.json)
-            else:
-                if result:
-                    if result.status_code >= 300:
-                        text_color = "RED"
-                    else:
-                        text_color = "GREEN"
-
-                    if result.json:
-                        result_text = result.json
-                    elif result.text:
-                        result_text = result.text
-
-                    if args.command in view_table_format:
-                        socket_request.print_table(title=f"{args.command} result", source_dict=result_text)
-                    else:
-                        socket_request.color_print(f"{result_text}", text_color)
-
-                    if text_color == "RED":
-                        socket_request.color_print(str(cc.get_state()))
-                else:
-                    socket_request.color_print(f"return {result}")
-
+    try:
+        if args.debug:
+            print(args)
+        if os.environ.get("GOLOOP_NODE_SOCK"):
+            args.unixsocket = os.environ.get("GOLOOP_NODE_SOCK")
+        elif args.base_dir:
+            args.unixsocket = f"{args.base_dir}/data/cli.sock"
         else:
-            print(cc.view_chain())
-            print(result)
-            socket_request.color_print(f"[ERROR] {args.command}, {result.text}", "FAIL")
+            args.base_dir = get_base_dir()
+        print_banner(args)
+        if args.inspect:
+            args.payload = {"inspect": args.inspect}
+        if args.command == "import_icon" and args.payload is None:
+            args.payload = open(f"{args.base_dir}/config/import_config.json")
 
-        if args.forever is False:
-            sys.exit()
-        time.sleep(args.interval)
+        cc = socket_request.ControlChain(
+            unix_socket=args.unixsocket,
+            # cid=cid,
+            debug=args.debug,
+            auto_prepare=args.auto_prepare,
+            wait_state=args.wait_state,
+            timeout=args.timeout,
+            wait_socket=args.wait_socket,
+            retry=0,
+            endpoint=args.endpoint
+        )
+
+        if args.command == "ls":
+            args.command = "view_chain"
+
+        func = getattr(cc, args.command)
+        required_keys = check_required(args.command)
+        if args.debug:
+            print(f"command = {args.command},  required_keys = {required_keys}")
+        while True:
+            # if args.debug:
+            #     debug(locals())
+            result = run_function(func, required_keys, args)
+            result_text = None
+            if result:
+                if args.inspect:
+                    socket_request.dump(result.json)
+                else:
+                    if result:
+                        if result.status_code >= 300:
+                            text_color = "RED"
+                        else:
+                            text_color = "GREEN"
+
+                        if result.json:
+                            result_text = result.json
+                        elif result.text:
+                            result_text = result.text
+
+                        if args.command in view_table_format:
+                            socket_request.print_table(title=f"{args.command} result", source_dict=result_text)
+                        else:
+                            socket_request.color_print(f"{result_text}", text_color)
+
+                        if text_color == "RED":
+                            socket_request.color_print(str(cc.get_state()))
+                    else:
+                        socket_request.color_print(f"return {result}")
+
+            else:
+                print(cc.view_chain())
+                print(result)
+                socket_request.color_print(f"[ERROR] {args.command}, {result.text}", "FAIL")
+
+            if args.forever is False:
+                sys.exit()
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        socket_request.color_print("KeyboardInterrupt", "FAIL")
+    except Exception as e:
+        socket_request.color_print(f"Exception: {e}", "FAIL")
 
 
 if __name__ == "__main__":

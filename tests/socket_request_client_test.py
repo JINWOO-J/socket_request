@@ -15,10 +15,6 @@ for idx, path in enumerate(sys.path, 1):
 
 print(f'\nrsocket-request module location - {socket_request.__file__}')
 
-
-
-
-
 # chain_control_sock("start", cid)
 # exit()
 # chain_control_sock("stop", cid)

@@ -9,7 +9,6 @@ import socket_request
 import re
 
 sys.path.append('../common')
-import base
 
 from devtools import debug
 

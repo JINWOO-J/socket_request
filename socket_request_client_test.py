@@ -120,12 +120,12 @@ payload = {
 
 }
 
-res = cc.chain_config(payload=payload)
-
-debug(res.status_code)
-
-# debug(res.json)
-debug(res.get_json())
+# res = cc.chain_config(payload=payload)
+#
+# debug(res.status_code)
+#
+# # debug(res.json)
+# debug(res.get_json())
 
 # result = cc.view_chain(inspect=True)
 #
@@ -143,6 +143,8 @@ debug(res.get_json())
 # cc.join(seedAddress=seed_list, gs_file="conf/icon_genesis.zip", role=3)
 
 # debug(cc.view_chain(cid=None))
+# debug(cc.restore(restore_name="0x87b86_0x53_icon_dex_20220614-074532.zip"))
+debug(cc.prune(blockheight=1))
 debug(cc.get_state())
 
 # for i in range(1, 100):
