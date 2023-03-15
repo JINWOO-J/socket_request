@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import sys
 import argparse
+from pawnlib.config import pawn, pconf
+from pawnlib.typing import sys_exit
 
 import socket_request
 
@@ -14,8 +16,9 @@ import time
 
 import os
 
-is_docker = os.environ.get("IS_DOCKER", False)
 
+is_docker = os.environ.get("IS_DOCKER", False)
+AVAIL_PLATFORM = ["icon", "havah"]
 
 def get_base_dir(args=None):
     if args and args.base_dir:
@@ -23,7 +26,12 @@ def get_base_dir(args=None):
     elif socket_request.str2bool(is_docker):
         base_dir = "/goloop"
     else:
-        guess_base_dir = ["/app/icon2-node", "/app/goloop"]
+        # if args.platform == "icon":
+        #     guess_base_dir = ["/app/icon2-node", "/app/goloop"]
+        # elif args.platform == "havah":
+        #     guess_base_dir = ["/app/havah-node"]
+        guess_base_dir = ["/app/icon2-node", "/app/goloop", "/app/havah-node", "/app/havah_node_docker"]
+
         base_dir = guess_base_dir[0]
         for dir_name in guess_base_dir:
             if os.path.exists(dir_name):
@@ -41,8 +49,7 @@ def get_parser():
         choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'view_system_config', 'join', 'backup', 'backup_list', 'restore',
                  'chain_config', 'system_config', 'ls', "prune", 'rpc_call'],
         help='')
-    parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
-                        default=f"{get_base_dir()}/data/cli.sock")
+
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
     parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 60)', default=60)
@@ -67,8 +74,24 @@ def get_parser():
 
     parser.add_argument('--endpoint', metavar='endpoint url', help=f'endpoint url', type=str, default=None)
     parser.add_argument('--cid', metavar='cid', help=f'cid', type=str, default=None)
+    parser.add_argument('--gs-file', metavar='gs_file', help=f'genesis file', type=str, default=None)
+    parser.add_argument('--platform', metavar='platform', help='platform of goloop', type=str, default="icon", choices=AVAIL_PLATFORM)
+
+    parser.add_argument('--compare', metavar='platform', help='compare blockheight endpoint', type=socket_request.str2bool, default=True)
+    parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
+                        default=f"{get_base_dir()}/data/cli.sock")
 
     return parser.parse_args()
+
+
+def parse_environment():
+
+    platform = os.getenv('PLATFORM', None)
+
+    if platform:
+        if platform not in AVAIL_PLATFORM:
+            sys_exit(f"Invalid platform env, input={platform}, allows={AVAIL_PLATFORM}")
+        pconf().args.platform = platform
 
 
 def print_banner(args):
@@ -81,10 +104,11 @@ def print_banner(args):
     ┗━━┻━━┻┛┗┻━┻┛┗━━┻━┛┗━━┻┛┗┻┛┗┻┻┛┗┛    
     """
     print(text)
+    print(f"\t platform: {args.platform}\n")
     print(f"\t version : {__version__}")
     if socket_request.str2bool(is_docker):
         print(f"\t is_docker: {is_docker}")
-    print(f"\t base_dir: {get_base_dir()}")
+    print(f"\t base_dir: {get_base_dir(args)}")
     print(f"\t unixsocket: {args.unixsocket}\n\n")
 
 
@@ -93,6 +117,7 @@ def check_required(command=None):
         "payload": ["import_icon", "chain_config", "system_config"],
         "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
+        "compare": ["view_chain"],
         "gs_file": ["join"],
         "blockheight": ["prune", "reset"],
         "restore_name": ["restore"],
@@ -135,7 +160,13 @@ def run_function(func, required_keys, args):
 
     if args.seedAddress:
         seedAddress = args.seedAddress.split(",")
-        gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
+        if args.gs_file:
+            gs_file = args.gs_file
+        else:
+            gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
+
+    if args.command == "view_chain":
+        compare = args.compare
 
     params_check_commands = ["prune", "restore", "reset"]
 
@@ -161,6 +192,10 @@ def run_function(func, required_keys, args):
         if args.debug:
             debug(required_arg)
             debug(arguments)
+
+        if payload and func.__name__ in ['join']:
+            arguments.update(payload)
+
         if len(arguments) > 0:
             result = func(**arguments)
         else:
@@ -172,7 +207,12 @@ def run_function(func, required_keys, args):
 
 def main():
     args = get_parser()
+    pawn.set(args=args)
+
     view_table_format = ["backup_list"]
+
+    parse_environment()
+
     try:
         if args.debug:
             print(args)
@@ -231,7 +271,6 @@ def main():
                             socket_request.print_table(title=f"{args.command} result", source_dict=result_text)
                         else:
                             socket_request.color_print(f"{result_text}", text_color)
-
                         if text_color == "RED":
                             socket_request.color_print(str(cc.get_state()))
                     else:

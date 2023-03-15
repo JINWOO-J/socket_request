@@ -13,6 +13,8 @@ writer = codecs.lookup("utf-8")[3]
 class ConnectSock:
     def __init__(self, unix_socket="/var/run/docker.sock", timeout=10, debug=False,
                  headers=None, wait_socket=False, retry=3, http_version="1.0"):
+        self.r_body_string = None
+        self.r_headers_string = None
         self.payload = None
         self.unix_socket = unix_socket
         self.timeout = timeout

@@ -88,6 +88,8 @@ class ControlChain(ConnectSock):
         self.seedAddress = []
         self.retry = retry
 
+        self.last_blockheight_number = 0
+        self.last_call_count = 0
         self.endpoint = endpoint
         self.last_block = {}
 
@@ -302,6 +304,20 @@ class ControlChain(ConnectSock):
 
         return self.request(url=f"/api/v3/icon_dex", payload=payload, method="POST")
 
+    def _get_last_block_height(self):
+
+        blockheight = 0
+        res = self.rpc_call(
+            payload=_make_json_rpc(
+                method="icx_getLastBlock",
+            )
+        )
+        if isinstance(res.json, dict):
+            blockheight = res.json['result'].get('height', 0)
+
+        return blockheight
+
+
     def _get_block_hash(self, blockheight):
         res = self.rpc_call(
             payload=_make_json_rpc(
@@ -394,6 +410,8 @@ class ControlChain(ConnectSock):
         )
 
         print(f"seedAddress => {seedAddress}")
+        print(config_payload, self.gs_file)
+
         if not seedAddress:
             raise Exception(red(f"[ERROR] seedAddress is None"))
 
@@ -483,7 +501,20 @@ class ControlChain(ConnectSock):
             sys.exit(127)
 
     # @_decorator_kwargs_checker
-    def view_chain(self, cid=None, detail=False, inspect=False):
+
+    def _append_compare_blockheight(self):
+        if self.last_call_count % 50 == 0:
+            self.last_blockheight_number = self._get_last_block_height()
+            self.last_call_count = 0
+
+        if self.state:
+            self.state['left_height'] = self.last_blockheight_number - self.state['height']
+            self.state['last_height'] = self.last_blockheight_number
+        self.last_call_count += 1
+
+
+    def view_chain(self, cid=None, detail=False, inspect=False, compare=False):
+
         payload = {}
         if cid:
             self.cid = cid
@@ -504,6 +535,9 @@ class ControlChain(ConnectSock):
             try:
                 self.get_tps()
                 res.set_dict(self.state)
+                if compare:
+                    self._append_compare_blockheight()
+
             except:
                 pass
             # self.connect_error = res.get('error')

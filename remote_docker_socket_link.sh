@@ -17,3 +17,5 @@ rm -rf ${LOCAL_SOCKET_FILE}
 
 socat "UNIX-LISTEN:${LOCAL_SOCKET_FILE},reuseaddr,fork" EXEC:"ssh root@${REMOTE_IP} socat STDIO UNIX-CONNECT\:${REMOTE_SOCKET_FILE}"
 
+
+
