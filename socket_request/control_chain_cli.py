@@ -75,7 +75,7 @@ def get_parser():
     parser.add_argument('--endpoint', metavar='endpoint url', help=f'endpoint url', type=str, default=None)
     parser.add_argument('--cid', metavar='cid', help=f'cid', type=str, default=None)
     parser.add_argument('--gs-file', metavar='gs_file', help=f'genesis file', type=str, default=None)
-    parser.add_argument('--platform', metavar='platform', help='platform of goloop', type=str, default="icon", choices=AVAIL_PLATFORM)
+    parser.add_argument('--platform', metavar='platform', help='platform of goloop', type=str, default=os.environ.get('PLATFORM', 'icon'), choices=AVAIL_PLATFORM)
 
     parser.add_argument('--compare', metavar='platform', help='compare blockheight endpoint', type=socket_request.str2bool, default=True)
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
@@ -117,6 +117,7 @@ def check_required(command=None):
         "payload": ["import_icon", "chain_config", "system_config"],
         "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
+        "platform": ["join"],
         "compare": ["view_chain"],
         "gs_file": ["join"],
         "blockheight": ["prune", "reset"],
@@ -143,6 +144,7 @@ def run_function(func, required_keys, args):
     gs_file = None
     seedAddress = None
     result = None
+    platform = None
 
     if args.payload:
         if isinstance(args.payload, dict):
@@ -164,6 +166,9 @@ def run_function(func, required_keys, args):
             gs_file = args.gs_file
         else:
             gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
+
+    if args.platform:
+        platform = args.platform
 
     if args.command == "view_chain":
         compare = args.compare
