@@ -9,7 +9,7 @@ except:
 
 from ..utils.data import ResponseField, RequestField
 from ..utils.utils import *
-
+from pawnlib.config import pawn
 
 def _make_json_rpc(method="", params: dict = {}):
     return {
@@ -32,6 +32,8 @@ class ControlChain(ConnectSock):
         "import_stop": "import_icon finished"
     }
 
+
+
     def __init__(
             self,
             unix_socket="/app/goloop/data/cli.sock",
@@ -42,7 +44,8 @@ class ControlChain(ConnectSock):
             logger=None,
             check_args=True,
             retry=3,
-            endpoint=None
+            endpoint=None,
+            http_version="1.0"
     ):
         """
         ChainControl class init
@@ -65,8 +68,9 @@ class ControlChain(ConnectSock):
             # "Accept-Encoding": "gzip",
 
         }
+        self.http_version = http_version
 
-        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers, wait_socket=wait_socket, http_version="1.0")
+        super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug, headers=self.headers, wait_socket=wait_socket, http_version=self.http_version)
         self.url = url
         self.unix_socket = unix_socket
         self.cid = cid
@@ -145,7 +149,22 @@ class ControlChain(ConnectSock):
     def _decorator_wait_state(func):
         def wait_state(self, *args, **kwargs):
             func_name = func.__name__
+            force_retry_loop_functions = ['stop']
             ret = func(self, *args, **kwargs)
+
+            if func_name in force_retry_loop_functions and getattr(ret, "status_code", None) and ret.status_code != 202:
+                ret = wait_state_loop(
+                    exec_function=self._just_stop,
+                    check_key="status",
+                    wait_state=self.success_state.get(func_name),
+                    health_status=200,
+                    increase_sec=5,
+                    description=f"'{func_name}'",
+                    logger=self.logger
+                )
+                return ret
+
+
             if self.wait_state and self.success_state.get(func_name):
                 wait_state_loop(
                     exec_function=self.view_chain,
@@ -206,7 +225,9 @@ class ControlChain(ConnectSock):
 
     @_decorator_kwargs_checker(check_mandatory=False)
     def guess_cid(self):
-        res = self.view_chain()
+        # res = self.view_chain()
+        res = self.request(url="/chain", payload={}, method="GET", return_dict=True)
+
         if res.json and res.get_json("cid"):
             self.state = res.get_json()
             self.cid = res.get_json('cid')
@@ -252,12 +273,19 @@ class ControlChain(ConnectSock):
     @_decorator_wait_state
     @_decorator_kwargs_checker
     def stop(self, cid=None, **kwargs):
+        return self._just_stop(cid)
+
+    def _just_stop(self, cid=None):
         if cid:
             self.cid = cid
         if self.cid is None:
             self.guess_cid()
-        res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
+        try:
+            res = self.request(url=f"/chain/{self.cid}/stop", payload={}, method="POST")
+        except Exception as e:
+            pawn.console.log(f"[red] Failed to stop {e}")
         return res
+
 
     @_decorator_kwargs_checker
     def import_finish(self, cid=None, **kwargs):
@@ -524,6 +552,7 @@ class ControlChain(ConnectSock):
             # payload = {"informal": "true"}
         elif self.cid and detail:
             url = f"/chain/{self.cid}/configure"
+
         else:
             url = f"/chain"
         res = self.request(url=url, payload=payload, method="GET", return_dict=True)
@@ -623,3 +652,4 @@ class ControlChain(ConnectSock):
     def system_config(self, payload=None):
         payload = payload_bool2string(payload)
         return self.multi_payload_request(url="/system/configure", payload=payload, method="POST")
+

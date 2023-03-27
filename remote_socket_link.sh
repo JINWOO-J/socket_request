@@ -10,7 +10,8 @@ REMOTE_IP="100.106.142.90"
 LOCAL_SOCKET_FILE="${PWD}/data/cli.sock"
 #REMOTE_SOCKET_FILE="/app/icon2-node/data/cli.sock"
 #REMOTE_SOCKET_FILE="/app/goloop/data/cli.sock"
-REMOTE_SOCKET_FILE="/app/havah_node_docker/data/cli.sock"
+REMOTE_SOCKET_FILE="/app/havah-chain-node-docker/data/cli.sock"
+#REMOTE_SOCKET_FILE="/app/havah_cc_test/data/cli.sock"
 
 echo "REMOTE_IP -> ${REMOTE_IP}"
 rm -rf ${LOCAL_SOCKET_FILE}

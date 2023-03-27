@@ -16,7 +16,7 @@ for idx, path in enumerate(sys.path, 1):
 print(f'\nrsocket-request module location - {socket_request.__file__}')
 
 
-cid = "0x153140"
+cid = "0xfca3fc"
 socket_address = './data/cli.sock'
 
 cc = socket_request.ControlChain(
@@ -24,17 +24,24 @@ cc = socket_request.ControlChain(
     cid=cid,
     debug=True,
     auto_prepare=False,
-    wait_state=False
+    wait_state=False,
+    http_version="1.0",
 )
 
 # debug(cc.view_chain())
+# payload = {
+#     "jsonrpc": "2.0",
+#     "method": "icx_getBlockByHeight",
+#     "id": 1234,
+#     "params": {
+#         "height": "0x22"
+#     }
+# }
+
 payload = {
     "jsonrpc": "2.0",
-    "method": "icx_getBlockByHeight",
+    "method": "icx_getLastBlock",
     "id": 1234,
-    "params": {
-        "height": "0x22"
-    }
 }
 
 

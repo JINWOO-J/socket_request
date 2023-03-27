@@ -114,7 +114,7 @@ def print_banner(args):
 
 def check_required(command=None):
     required_params = {
-        "payload": ["import_icon", "chain_config", "system_config"],
+        "payload": ["import_icon", "chain_config", "system_config", "rpc_call"],
         "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
         "platform": ["join"],
