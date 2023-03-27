@@ -26,10 +26,10 @@ def get_base_dir(args=None):
     elif socket_request.str2bool(is_docker):
         base_dir = "/goloop"
     else:
-        # if args.platform == "icon":
-        #     guess_base_dir = ["/app/icon2-node", "/app/goloop"]
-        # elif args.platform == "havah":
-        #     guess_base_dir = ["/app/havah-node"]
+        guess_sock = "data/cli.sock"
+        if socket_request.ConnectSock(unix_socket=guess_sock)._health_check():
+            return "."
+
         guess_base_dir = ["/app/icon2-node", "/app/goloop", "/app/havah-node", "/app/havah_node_docker"]
 
         base_dir = guess_base_dir[0]

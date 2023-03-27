@@ -32,8 +32,6 @@ class ControlChain(ConnectSock):
         "import_stop": "import_icon finished"
     }
 
-
-
     def __init__(
             self,
             unix_socket="/app/goloop/data/cli.sock",
