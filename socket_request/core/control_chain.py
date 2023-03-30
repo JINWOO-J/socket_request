@@ -1,6 +1,7 @@
 from functools import partial, wraps
 from .connect_sock import ConnectSock
 import requests
+from functools import partial
 
 try:
     from ..__version__ import __version__
@@ -29,6 +30,7 @@ class ControlChain(ConnectSock):
         "restore": "success",
         "start": "started",
         "stop": "stopped",
+        "_just_stop": "stopped",
         "import_stop": "import_icon finished"
     }
 
@@ -97,6 +99,8 @@ class ControlChain(ConnectSock):
 
         self.logging(f"Load ControlChain Version={__version__}")
 
+        self._inside_func = None
+
         if self.cid is None and self._health_check():
             self.debug_print("cid not found. Guess it will get the cid.")
             self.guess_cid()
@@ -112,7 +116,8 @@ class ControlChain(ConnectSock):
     def _decorator_stop_start(func):
         def stop_start(self, *args, **kwargs):
             func_name = func.__name__
-
+            self._inside_func = func_name
+            pawn.console.log(f"Starting {self._inside_func}() {args} {kwargs}")
             if func_name == "restore" and self.check_backup_file(restore_name=kwargs.get("restore_name")) is False:
                 return
 
@@ -148,20 +153,15 @@ class ControlChain(ConnectSock):
         def wait_state(self, *args, **kwargs):
             func_name = func.__name__
             force_retry_loop_functions = ['stop']
+
             ret = func(self, *args, **kwargs)
 
             if func_name in force_retry_loop_functions and getattr(ret, "status_code", None) and ret.status_code != 202:
-                ret = wait_state_loop(
-                    exec_function=self._just_stop,
-                    check_key="status",
-                    wait_state=self.success_state.get(func_name),
-                    health_status=200,
-                    increase_sec=5,
-                    description=f"'{func_name}'",
-                    logger=self.logger
+                _ret = self._wait_state_loop_on_avail(
+                    func=self._just_stop,
+                    expected="stopped",
+                    *args, **kwargs
                 )
-                return ret
-
 
             if self.wait_state and self.success_state.get(func_name):
                 wait_state_loop(
@@ -174,6 +174,22 @@ class ControlChain(ConnectSock):
                 )
             return ret
         return wait_state
+
+    def _wait_state_loop_on_avail(self, func, expected, *args, **kwargs):
+        while True:
+            # pawn.console.log(f"Executing func={func.__name__}, expected={expected}")
+            result = func(*args, **kwargs)
+            if self._check_state_on_avail(expected):
+                break;
+            time.sleep(0.3)
+        return result
+
+    def _check_state_on_avail(self, expected=""):
+        self.get_state()
+        # pawn.console.log(f"{expected}, now:{self.state.get('state')} == expected:{expected}")
+        if self.state and self.state.get('state') == expected:
+            return True
+        return False
 
     def get_restore_status(self):
         return self.request(url="/system/restore",  method="GET", return_dict=True)
@@ -204,7 +220,9 @@ class ControlChain(ConnectSock):
                                 and value is None \
                                 and (default_param is None
                                      or default_param == {} or default_param == []):
-                            raise Exception(red(f"Required '{key}' parameter for {func_name}() , func_params={func_params}, "
+
+                            raise Exception(red(f"Required '{key}' parameter for {self._inside_func}, {func_name}(), "
+                                                f"func_params={func_params}, "
                                                 f"self.check_args={self.check_args}, "
                                                 f"default_param={default_param}"))
 
@@ -562,7 +580,7 @@ class ControlChain(ConnectSock):
             try:
                 self.get_tps()
                 res.set_dict(self.state)
-                if compare:
+                if compare and self.endpoint:
                     self._append_compare_blockheight()
 
             except:

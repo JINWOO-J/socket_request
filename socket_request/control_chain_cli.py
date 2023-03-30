@@ -173,7 +173,7 @@ def run_function(func, required_keys, args):
     if args.command == "view_chain":
         compare = args.compare
 
-    params_check_commands = ["prune", "restore", "reset"]
+    must_have_params_command = ["prune", "restore", "reset", "chain_config", "system_config"]
 
     if required_keys:
         arguments = {}
@@ -182,17 +182,12 @@ def run_function(func, required_keys, args):
                 debug(locals())
             if locals().get(required_arg):
                 arguments[required_arg] = locals()[required_arg]
-            # It will be found the args namespace
-            # elif getattr(locals().get("args"), required_arg):
-
-            elif args.command in params_check_commands:
+            elif args.command in must_have_params_command:
                 try:
                     arguments[required_arg] = getattr(locals().get("args"), required_arg)
                 except Exception as e:
                     print(f"Exception -- {e}")
                     pass
-
-                # arguments[required_arg] = getattr(locals().get("args"), required_arg)
 
         if args.debug:
             debug(required_arg)
@@ -250,6 +245,7 @@ def main():
 
         func = getattr(cc, args.command)
         required_keys = check_required(args.command)
+        pawn.console.log(f"command = {args.command}")
         if args.debug:
             print(f"command = {args.command},  required_keys = {required_keys}")
         while True:
@@ -292,7 +288,10 @@ def main():
     except KeyboardInterrupt:
         socket_request.color_print("KeyboardInterrupt", "FAIL")
     except Exception as e:
-        socket_request.color_print(f"Exception: {e}", "FAIL")
+        if pawn.get("PAWN_DEBUG"):
+            pawn.console.print_exception(show_locals=pawn.get("PAWN_DEBUG", False), width=160)
+        else:
+            socket_request.color_print(f"Exception: {e}", "FAIL")
 
 
 if __name__ == "__main__":

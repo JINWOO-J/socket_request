@@ -7,6 +7,7 @@ import sys
 import re
 from halo import Halo
 from devtools import debug
+from functools import partial
 import time
 from ..utils.data import ResponseField, RequestField
 
@@ -105,7 +106,7 @@ def wait_state_loop(
         health_status=None,
         description="",
         force_dict=True,
-        logger=None
+        logger=None,
 ):
     start_time = time.time()
     count = 0
@@ -190,6 +191,7 @@ def wait_state_loop(
         logger.info(f"[SR] [DONE] {act_desc}")
 
     if health_status:
+        pawn.console.log(f"[END LOOP] {response}")
         return response
 
     # return {
