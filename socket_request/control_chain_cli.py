@@ -234,7 +234,10 @@ def main():
 
     view_table_format = ["backup_list"]
 
-    parse_environment()
+    try:
+        parse_environment()
+    except Exception as e:
+        pawn.console.log(f'[yellow] {e}')
 
     try:
         if args.debug:
