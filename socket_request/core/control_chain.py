@@ -550,7 +550,7 @@ class ControlChain(ConnectSock):
     # @_decorator_kwargs_checker
 
     def _append_compare_blockheight(self):
-        if self.last_call_count % 50 == 0:
+        if self.last_call_count % 20 == 0:
             self.last_blockheight_number = self._get_last_block_height()
             self.last_call_count = 0
 

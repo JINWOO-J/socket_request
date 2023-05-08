@@ -79,7 +79,7 @@ def get_parser():
     parser.add_argument('--channel', metavar='channel', help='channel name of goloop', type=str, default=os.environ.get('CHANNEL_NAME', 'icon_dex'))
     parser.add_argument('--role', metavar='role', help='role of goloop', type=int, default=os.environ.get('ROLE', 0), choices=[0, 1, 3])
 
-    parser.add_argument('--compare', metavar='compare', help='compare blockheight endpoint', type=socket_request.str2bool, default=True)
+    parser.add_argument('-c', '--compare',  help='compare blockheight endpoint', action='store_true', default=False)
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
                         default=f"{get_base_dir()}/data/cli.sock")
 

@@ -1,8 +1,8 @@
 
---build-arg BUILD_DATE=2023-05-08T08:08:13UTC  
+--build-arg BUILD_DATE=2023-05-08T08:17:29UTC  
 --build-arg ECHO_OPTION=  
 --build-arg LOCAL_SERVER=20.20.5.172  
 --build-arg NAME=socket_request  
 --build-arg SED_OPTION=''  
 --build-arg UNAME_S=Darwin  
---build-arg VERSION=1.1.12  
+--build-arg VERSION=1.1.13  
