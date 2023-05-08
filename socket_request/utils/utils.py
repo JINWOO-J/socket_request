@@ -10,6 +10,7 @@ from devtools import debug
 from functools import partial
 import time
 from ..utils.data import ResponseField, RequestField
+from pawnlib.config import pawn
 
 
 class bcolors:

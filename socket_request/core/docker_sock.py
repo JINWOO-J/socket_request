@@ -19,7 +19,8 @@ class DockerSock(ConnectSock):
             auto_prepare=False,
             wait_state=False,
             simple_name=True,
-            logger=None
+            logger=None,
+            default_return_keys=[]
 
     ):
         super().__init__(unix_socket=unix_socket, timeout=timeout, debug=debug)
@@ -42,7 +43,10 @@ class DockerSock(ConnectSock):
         self.auto_prepare = auto_prepare
         self.wait_state = wait_state
         self.logger = logger
-        self.default_return_keys = ["Image", "State", "Status"]
+        if default_return_keys:
+            self.default_return_keys = default_return_keys
+        else:
+            self.default_return_keys = ["Image", "State", "Status"]
         self.container_list = []
         self.return_keys = list(set(self.default_return_keys) | {"Id", "Names"})
         self.return_lower_keys = [key.lower() for key in self.return_keys]

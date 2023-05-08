@@ -15,10 +15,11 @@ except:
 import time
 
 import os
-
+from pawnlib.utils import NetworkInfo
 
 is_docker = os.environ.get("IS_DOCKER", False)
 AVAIL_PLATFORM = ["icon", "havah"]
+
 
 def get_base_dir(args=None):
     if args and args.base_dir:
@@ -50,7 +51,6 @@ def get_parser():
                  'chain_config', 'system_config', 'ls', "prune", 'rpc_call'],
         help='')
 
-
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
     parser.add_argument('-t', '--timeout', metavar='timeout', type=int, help=f'timeout (default: 60)', default=60)
 
@@ -76,8 +76,10 @@ def get_parser():
     parser.add_argument('--cid', metavar='cid', help=f'cid', type=str, default=None)
     parser.add_argument('--gs-file', metavar='gs_file', help=f'genesis file', type=str, default=None)
     parser.add_argument('--platform', metavar='platform', help='platform of goloop', type=str, default=os.environ.get('PLATFORM', 'icon'), choices=AVAIL_PLATFORM)
+    parser.add_argument('--channel', metavar='channel', help='channel name of goloop', type=str, default=os.environ.get('CHANNEL_NAME', 'icon_dex'))
+    parser.add_argument('--role', metavar='role', help='role of goloop', type=int, default=os.environ.get('ROLE', 0), choices=[0, 1, 3])
 
-    parser.add_argument('--compare', metavar='platform', help='compare blockheight endpoint', type=socket_request.str2bool, default=True)
+    parser.add_argument('--compare', metavar='compare', help='compare blockheight endpoint', type=socket_request.str2bool, default=True)
     parser.add_argument('-s', '--unixsocket', metavar='unixsocket', help=f'unix domain socket path (default: {get_base_dir()}/data/cli.socket)',
                         default=f"{get_base_dir()}/data/cli.sock")
 
@@ -85,13 +87,25 @@ def get_parser():
 
 
 def parse_environment():
-
     platform = os.getenv('PLATFORM', None)
-
+    service = os.getenv('SERVICE', None)
     if platform:
         if platform not in AVAIL_PLATFORM:
             sys_exit(f"Invalid platform env, input={platform}, allows={AVAIL_PLATFORM}")
         pconf().args.platform = platform
+    else:
+        platform = pconf().args.platform
+
+    if platform and service:
+        service = service.lower()
+        if service == "veganet":
+            service = "vega"
+        elif service == "denebnet":
+            service = "deneb"
+        network_info = NetworkInfo(platform=platform, network_name=service)
+        if not pconf().args.endpoint:
+            pconf().args.endpoint = network_info.network_api
+            pawn.console.log(f"Set endpoint, service={service}")
 
 
 def print_banner(args):
@@ -117,6 +131,8 @@ def check_required(command=None):
         "payload": ["import_icon", "chain_config", "system_config", "rpc_call"],
         "inspect": ["view_chain", "view_system_config"],
         "seedAddress": ["join"],
+        "role": ["join"],
+        "channel": ["join"],
         "platform": ["join"],
         "compare": ["view_chain"],
         "gs_file": ["join"],
@@ -145,6 +161,7 @@ def run_function(func, required_keys, args):
     seedAddress = None
     result = None
     platform = None
+    role = None
 
     if args.payload:
         if isinstance(args.payload, dict):
@@ -170,6 +187,12 @@ def run_function(func, required_keys, args):
     if args.platform:
         platform = args.platform
 
+    if args.role != "":
+        role = args.role
+
+    if args.channel != "":
+        channel = args.channel
+
     if args.command == "view_chain":
         compare = args.compare
 
@@ -180,7 +203,7 @@ def run_function(func, required_keys, args):
         for required_arg in required_keys:
             if args.debug:
                 debug(locals())
-            if locals().get(required_arg):
+            if locals().get(required_arg, "__NOT_DEFINED__") != "__NOT_DEFINED__":
                 arguments[required_arg] = locals()[required_arg]
             elif args.command in must_have_params_command:
                 try:

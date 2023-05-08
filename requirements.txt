@@ -1,5 +1,5 @@
-halo >= 0.0.31
-devtools >= 0.6.1
-argparse >= 1.4.0
-requests >= 2.20.0
-pawnlib == 0.1.37
+#halo >= 0.0.31
+#devtools >= 0.6.1
+#argparse >= 1.4.0
+#requests >= 2.20.0
+pawnlib >= 1.0.10

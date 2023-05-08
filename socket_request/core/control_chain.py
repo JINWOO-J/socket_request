@@ -11,6 +11,8 @@ except:
 from ..utils.data import ResponseField, RequestField
 from ..utils.utils import *
 from pawnlib.config import pawn
+from pawnlib.typing import StackList, TimeCalculator
+
 
 def _make_json_rpc(method="", params: dict = {}):
     return {
@@ -96,6 +98,8 @@ class ControlChain(ConnectSock):
         self.last_call_count = 0
         self.endpoint = endpoint
         self.last_block = {}
+
+        self._tps_stack = StackList(max_length=100)
 
         self.logging(f"Load ControlChain Version={__version__}")
 
@@ -453,8 +457,7 @@ class ControlChain(ConnectSock):
             nodeCache=nodeCache
         )
 
-        print(f"seedAddress => {seedAddress}")
-        print(config_payload, self.gs_file)
+        pawn.console.debug(config_payload, self.gs_file)
 
         if not seedAddress:
             raise Exception(red(f"[ERROR] seedAddress is None"))
@@ -554,8 +557,12 @@ class ControlChain(ConnectSock):
         if self.state:
             self.state['left_height'] = self.last_blockheight_number - self.state['height']
             self.state['last_height'] = self.last_blockheight_number
-        self.last_call_count += 1
+            try:
+                self.state['left_time'] = TimeCalculator(self.state['left_height'] / self._tps_stack.mean())
+            except Exception as e:
+                pawn.console.log(f"[red] exception - {e}")
 
+        self.last_call_count += 1
 
     def view_chain(self, cid=None, detail=False, inspect=False, compare=False):
 
@@ -603,6 +610,8 @@ class ControlChain(ConnectSock):
             diff_time = time.time() - self.last_block['time']
             tps = diff_block / diff_time
             # print(diff_block, diff_time, tps)
+            self._tps_stack.push(tps)
+
             self.state['tps'] = round(tps)
             self.last_block = {
                 "height": self.state.get("height"),

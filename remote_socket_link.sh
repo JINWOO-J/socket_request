@@ -10,10 +10,10 @@ REMOTE_IP="100.106.142.90"
 LOCAL_SOCKET_FILE="${PWD}/data/cli.sock"
 #REMOTE_SOCKET_FILE="/app/icon2-node/data/cli.sock"
 #REMOTE_SOCKET_FILE="/app/goloop/data/cli.sock"
-REMOTE_SOCKET_FILE="/app/havah-chain-node-docker/data/cli.sock"
+REMOTE_SOCKET_FILE="/app/havah-chain-node-docker/test_data/cli.sock"
 #REMOTE_SOCKET_FILE="/app/havah_cc_test/data/cli.sock"
 
-echo "REMOTE_IP -> ${REMOTE_IP}"
+echo "LOCAL_SOCKET_FILE: ${LOCAL_SOCKET_FILE} -> REMOTE_IP: ${REMOTE_IP}"
 rm -rf ${LOCAL_SOCKET_FILE}
 
 socat "UNIX-LISTEN:${LOCAL_SOCKET_FILE},reuseaddr,fork" EXEC:"ssh root@${REMOTE_IP} socat STDIO UNIX-CONNECT\:${REMOTE_SOCKET_FILE}"
