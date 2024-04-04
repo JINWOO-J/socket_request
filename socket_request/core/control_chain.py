@@ -11,7 +11,7 @@ except:
 from ..utils.data import ResponseField, RequestField
 from ..utils.utils import *
 from pawnlib.config import pawn
-from pawnlib.typing import StackList, TimeCalculator
+from pawnlib.typing import StackList, TimeCalculator, timestamp_to_string
 
 
 def _make_json_rpc(method="", params: dict = {}):
@@ -28,7 +28,7 @@ class ControlChain(ConnectSock):
         "backup": "backup done",
         "prune": "pruning done",
         # "reset": "started",
-        "reset": "reset finished",
+        "reset": "started",
         "restore": "success",
         "start": "started",
         "stop": "stopped",
@@ -209,6 +209,7 @@ class ControlChain(ConnectSock):
                 if self.auto_prepare:
                     if func_name not in ["view_chain", "join"]:
                         self.view_chain()
+
                     if self.state.get("state") and self.success_state.get(func_name) == self.state.get("state"):
                         return ResponseField(status_code=202, text=f"Already {self.state.get('state')}")
 
@@ -344,13 +345,14 @@ class ControlChain(ConnectSock):
 
     def rpc_call(self, payload: dict = {}):
         if self.endpoint:
+            pawn.console.log(f"Fetching {self.endpoint}")
             res = requests.post(url=f"{self.endpoint}/api/v3", json=payload)
             res.json = res.json()
             if isinstance(res.json, dict) and res.json.get('error'):
                 res.error = f"Endpoint returns error: {res.json['error'].get('message')}"
             return res
 
-        return self.request(url=f"/api/v3/icon_dex", payload=payload, method="POST")
+        return self.request(url="/api/v3/icon_dex", payload=payload, method="POST")
 
     def _get_last_block_height(self):
 
@@ -365,7 +367,6 @@ class ControlChain(ConnectSock):
 
         return blockheight
 
-
     def _get_block_hash(self, blockheight):
         res = self.rpc_call(
             payload=_make_json_rpc(
@@ -373,11 +374,15 @@ class ControlChain(ConnectSock):
                 params={'height': hex(blockheight)}
             )
         )
-        if res.json and res.json.get('result') and res.json['result'].get('block_hash'):
+        if isinstance(res.json, dict) and res.json.get('result') and res.json['result'].get('block_hash'):
+            pawn.console.log(f"<block_info> "
+                             f"block_height={hex(blockheight)}({blockheight:,}), "
+                             f"block_hash={res.json['result']['block_hash']}, "
+                             f"time_stamp={timestamp_to_string(res.json['result']['time_stamp'])} ")
             return f"0x{res.json['result']['block_hash']}"
         else:
-            # raise ValueError(f"{res.text}")
-            raise ValueError(f"{res.error}")
+            raise ValueError(f"{res}")
+            #raise ValueError(f"{res.error}")
         ##  TODO : It will be improve the result
 
     # def reset_test(self, blockheight=None, cid=None):
@@ -394,29 +399,29 @@ class ControlChain(ConnectSock):
 
     @_decorator_stop_start
     @_decorator_kwargs_checker
-    def reset(self, blockheight=None, cid=None):
-
-        block_hash = self._get_block_hash(blockheight)
-        if not block_hash:
-            raise ValueError(f"block_hash not found, blockheight={blockheight}")
-
+    def _reset(self, blockheight=None, block_hash=None):
         payload = {
             'height': blockheight,
             'blockHash': block_hash
         }
         color_print(f"Reset block_height={hex(blockheight)}({blockheight:,}), blockHash={payload.get('blockHash')}")
-        ##  TODO  #######################################
+        # self.stop(cid)
+        res = self.request(
+            url=f"/chain/{self.cid}/reset", payload=payload, method="POST")
+        # self.start(cid)
+        return res
+
+    def reset(self, blockheight=None, cid=None):
         if cid:
             self.cid = cid
 
         if not self.endpoint and not self.cid:
             self.guess_cid()
 
-        # self.stop(cid)
-        res = self.request(
-            url=f"/chain/{self.cid}/reset", payload=payload, method="POST")
-        # self.start(cid)
-        return res
+        block_hash = self._get_block_hash(blockheight)
+        if not block_hash:
+            raise ValueError(f"block_hash not found, blockheight={blockheight}")
+        self._reset(blockheight=blockheight, block_hash=block_hash)
 
     def import_icon(self, payload=None):
         res = self.request(
@@ -547,7 +552,14 @@ class ControlChain(ConnectSock):
             print(f"[ERROR] height is {blockheight}")
             sys.exit(127)
 
-    # @_decorator_kwargs_checker
+    def genesis(self, blockheight=None):
+        payload = {
+            # "cid": self.cid,
+            "filename": "genesis.zip"
+        }
+
+        res = self.request(url=f"/chain/{self.cid}/genesis", payload=payload, method="GET")
+        return res
 
     def _append_compare_blockheight(self):
         if self.last_call_count % 20 == 0:
@@ -557,10 +569,13 @@ class ControlChain(ConnectSock):
         if self.state:
             self.state['left_height'] = self.last_blockheight_number - self.state['height']
             self.state['last_height'] = self.last_blockheight_number
-            try:
-                self.state['left_time'] = TimeCalculator(self.state['left_height'] / self._tps_stack.mean())
-            except Exception as e:
-                pawn.console.log(f"[red] exception - {e}")
+            if self._tps_stack.mean() > 3:
+                try:
+                    self.state['left_time'] = TimeCalculator(self.state['left_height'] / self._tps_stack.mean())
+                except Exception as e:
+                    pawn.console.log(f"[red] exception - {e}")
+            else:
+                self.state['left_time'] = ""
 
         self.last_call_count += 1
 

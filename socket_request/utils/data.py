@@ -9,8 +9,9 @@ class ResponseField:
     elapsed = 0
     state = {}
     error = None
+    target = "SOCK"
 
-    def __init__(self, status_code=None, text=None, json=None, state=None, error=None):
+    def __init__(self, status_code=None, text=None, json=None, state=None, error=None, target="SOCK"):
         if status_code:
             self.status_code = status_code
         if text:
@@ -21,9 +22,11 @@ class ResponseField:
             self.state = state
         if error:
             self.error = error
+        if target:
+            self.target = target
 
     def __repr__(self):
-        return '<Response [%s]> %s' % (self.status_code, self.text)
+        return '<Response [%s]> <%s> %s' % (self.status_code, self.target, self.text)
 
     def get_json(self, key=None):
 

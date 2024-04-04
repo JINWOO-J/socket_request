@@ -48,7 +48,7 @@ def get_parser():
     parser.add_argument(
         'command',
         choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'view_system_config', 'join', 'backup', 'backup_list', 'restore',
-                 'chain_config', 'system_config', 'ls', "prune", 'rpc_call'],
+                 'chain_config', 'system_config', 'ls', 'prune', 'genesis', 'rpc_call'],
         help='')
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
@@ -237,7 +237,7 @@ def main():
     try:
         parse_environment()
     except Exception as e:
-        pawn.console.log(f'[yellow] {e}')
+        pawn.console.debug(f'[yellow] {e}')
 
     try:
         if args.debug:
@@ -317,7 +317,8 @@ def main():
         if pawn.get("PAWN_DEBUG"):
             pawn.console.print_exception(show_locals=pawn.get("PAWN_DEBUG", False), width=160)
         else:
-            socket_request.color_print(f"Exception: {e}", "FAIL")
+            pawn.console.log(cc.state)
+            pawn.console.log(f"[red]Exception occurred[/red]: {e}")
 
 
 if __name__ == "__main__":

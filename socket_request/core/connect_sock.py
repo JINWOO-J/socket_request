@@ -23,6 +23,10 @@ class ConnectSock:
         self.wait_socket = wait_socket
         self.http_version = http_version
 
+        self.response_headers = ""
+        self.response_headers_dict = {}
+        self.response_body = ""
+
         if isinstance(headers, dict):
             self.default_headers = headers
         else:
@@ -60,6 +64,9 @@ class ConnectSock:
         self.files = {}
         self.detail = False
         self.inspect = False
+        self.response_headers = ""
+        self.response_headers_dict = {}
+        self.response_body = ""
         self.Response = ResponseField()
 
     # def _decorator_check_connect(func):
@@ -323,17 +330,52 @@ class ConnectSock:
                 debug("<<< request_data >>>", request_data)
             self.sock.send(request_data)
             contents = ""
+            contents_bytes = b""
+
             while True:
                 response_data = self.sock.recv(1024)
                 if not response_data:
                     break
                 # print(response_data.decode('utf-8'))
-                contents += str(response_data.decode())
+                # contents += str(response_data.decode())
+                try:
+                    contents += str(response_data.decode())
+                    contents_bytes += response_data
+                except UnicodeDecodeError:
+                    contents_bytes += response_data
+
+            self.response_headers, self.response_body = contents_bytes.split(b'\r\n\r\n', 1)
+            # headers_str = headers.decode('utf-8')
+            # print(headers_str)
+
             self.sock.close()
             # debug(contents)
             return self._parsing_response(contents, return_dict=return_dict)
         else:
             return ResponseField(status_code=500, text=f"[ERROR] fail to connection, {self.connect_error}")
+
+    def _parsing_header(self):
+        _headers = self.response_headers.decode('utf-8').split("\r\n")
+        status = 999
+        self.response_headers_dict = {}
+        for _header in _headers:
+            if _header.startswith("HTTP/"):
+                status = _header.split(" ")[1]
+            elif ":" in _header:
+                header_key, header_value = _header.split(":", 1)
+                self.response_headers_dict[header_key.strip()] = header_value.strip()
+
+        self.Response.status_code = int(status)
+        # debug(self.response_headers_dict)
+        # # print(_headers_list)
+        # # print(status)
+
+    def _guess_filename(self, default_filename=None):
+        if self.response_headers_dict.get('Content-Disposition'):
+            __filename_line  = self.response_headers_dict.get('Content-Disposition').split("filename=", 1)
+            if len(__filename_line) > 1:
+                return self.response_headers_dict.get('Content-Disposition').split("filename=", 1)[1].replace('"', '')
+        return default_filename
 
     def _parsing_response(self, response, return_dict=False):
         """
@@ -342,18 +384,30 @@ class ConnectSock:
         :param return_dict: if response is a list type, change to dictionary => e.g., [{"cid":"232"}]  -> {"cid": "232"}
         :return:
         """
+        self._parsing_header()
+
+        if self.response_headers_dict.get('Content-Type') == "application/zip" and self.response_body:
+            if isinstance(self.payload, dict) and self.payload.get('filename'):
+                _filename = self.payload.get('filename')
+            else:
+                _filename = self._guess_filename("icon_default.zip")
+            with open(_filename, "wb") as binary_file:
+                binary_file.write(self.response_body)
+                pawn.console.log(f"Download  file - {_filename}")
+
         if response:
             response_lines = response.split('\r\n')
             if response_lines:
                 try:
                     status = response_lines[0].split(" ")[1]
-                    text = response_lines[-1].strip()
+                    text = self.response_body.decode("utf-8").strip()
                 except:
                     status = 999
                     text = ""
 
                 try:
-                    json_dict = json.loads(response_lines[-1])
+                    # json_dict = json.loads(response_lines[-1])
+                    json_dict = json.loads(text)
                     if return_dict and isinstance(json_dict, list):
                         json_dict = json_dict[0]
                         if text.startswith("[") and text.endswith("]"):
@@ -361,7 +415,7 @@ class ConnectSock:
                 except Exception as e:
                     json_dict = {}
 
-                self.Response.status_code = int(status)
+                # self.Response.status_code = int(status)
                 self.Response.json = json_dict
                 self.Response.text = text
 
