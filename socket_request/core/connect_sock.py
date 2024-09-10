@@ -91,7 +91,7 @@ class ConnectSock:
         self.connect_error = None
         mandatory_items = ["buildVersion", "buildTags"]
         try:
-            health = self._health_check()
+            health = self.health_check()
             if health:
                 res = self.request(url="/system", method="GET")
                 status_code = 200
@@ -113,9 +113,10 @@ class ConnectSock:
 
         return ResponseField(status_code=status_code, text=text)
 
-    def _health_check(self):
+    def health_check(self):
         if os.path.exists(self.unix_socket) is False:
-            self.connect_error = f"_health_check '{self.unix_socket}' socket file not found"
+            # self.connect_error = f"'{self.unix_socket}' socket file not found"
+            self.connect_error = "[red]socket file not found [/red]"
             # print(red(self.connect_error))
             return False
         try:
@@ -123,7 +124,7 @@ class ConnectSock:
             self._connect_sock_with_exception()
             self.sock.close()
         except Exception as e:
-            self.connect_error = f"_health_check cannot connect a socket: {e}"
+            self.connect_error = f"[red]Cannot connect a socket: {e}[/red]"
             # print(red(self.connect_error))
             return False
         return True
@@ -133,12 +134,12 @@ class ConnectSock:
         if self.wait_socket or self.retry >= 0:
             wait_count = 1
             # while os.path.exists(self.unix_socket) is False:
-            while self._health_check() is False:
-                message = f"[{wait_count}/{self.retry}] Wait for \'{self.unix_socket}\' to be created"
+            while self.health_check() is False:
+                message = f"[{wait_count}/{self.retry}] Wait for \'{self.unix_socket}\' to be created. {self.connect_error}"
                 if self.logger:
                     self.logging(message)
                 else:
-                    print(message)
+                    pawn.console.log(message)
                 time.sleep(1)
                 wait_count += 1
                 if self.retry and isinstance(self.retry, int) and self.retry < wait_count:
@@ -147,7 +148,7 @@ class ConnectSock:
             # print(f"Successfully \'{self.unix_socket}\' to be created")
             self._connect_sock_with_exception(timeout=timeout)
 
-        elif self._health_check():
+        elif self.health_check():
             self._connect_sock_with_exception(timeout=timeout)
 
         else:

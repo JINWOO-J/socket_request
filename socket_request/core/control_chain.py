@@ -2,6 +2,7 @@ from functools import partial, wraps
 from .connect_sock import ConnectSock
 import requests
 from functools import partial
+from pawnlib.utils import NetworkInfo
 
 try:
     from ..__version__ import __version__
@@ -98,6 +99,7 @@ class ControlChain(ConnectSock):
         self.last_call_count = 0
         self.endpoint = endpoint
         self.last_block = {}
+        self.nid = None
 
         self._tps_stack = StackList(max_length=100)
 
@@ -105,7 +107,7 @@ class ControlChain(ConnectSock):
 
         self._inside_func = None
 
-        if self.cid is None and self._health_check():
+        if self.cid is None and self.health_check():
             self.debug_print("cid not found. Guess it will get the cid.")
             self.guess_cid()
             self.debug_print(f"guess_cid = {self.cid}")
@@ -367,11 +369,51 @@ class ControlChain(ConnectSock):
 
         return blockheight
 
-    def _get_block_hash(self, blockheight):
+    def get_network_info(self):
+
+        res = self.rpc_call(
+            payload=_make_json_rpc(
+                method="icx_getNetworkInfo",
+            )
+        )
+        if isinstance(res.json, dict):
+            return res.json.get('result', {})
+        return {}
+
+    def get_network_id_with_compare_endpoint(self):
+        return self.get_network_info().get('nid')
+
+    def get_block_hash(self, blockheight=None):
+        color_print(f"blockheight = {blockheight}")
+
+        if is_hex(blockheight):
+            color_print("HEX!!!!")
+            hex_blockheight = blockheight
+        else:
+            hex_blockheight = hex(blockheight)
+
         res = self.rpc_call(
             payload=_make_json_rpc(
                 method="icx_getBlockByHeight",
-                params={'height': hex(blockheight)}
+                params={'height': hex_blockheight}
+            )
+        )
+        print(res)
+        return res
+
+    def _get_block_hash(self, blockheight):
+
+        if is_hex(blockheight):
+            color_print("HEX!!!!")
+            hex_blockheight = blockheight
+        else:
+            hex_blockheight = hex(blockheight)
+
+
+        res = self.rpc_call(
+            payload=_make_json_rpc(
+                method="icx_getBlockByHeight",
+                params={'height': hex_blockheight}
             )
         )
         if isinstance(res.json, dict) and res.json.get('result') and res.json['result'].get('block_hash'):
@@ -419,9 +461,10 @@ class ControlChain(ConnectSock):
             self.guess_cid()
 
         block_hash = self._get_block_hash(blockheight)
+
         if not block_hash:
             raise ValueError(f"block_hash not found, blockheight={blockheight}")
-        self._reset(blockheight=blockheight, block_hash=block_hash)
+        return self._reset(blockheight=blockheight, block_hash=block_hash)
 
     def import_icon(self, payload=None):
         res = self.request(
@@ -464,11 +507,11 @@ class ControlChain(ConnectSock):
 
         pawn.console.debug(config_payload, self.gs_file)
 
-        if not seedAddress:
-            raise Exception(red(f"[ERROR] seedAddress is None"))
+        # if not seedAddress:
+        #     raise Exception(red(f"[ERROR] seedAddress is None"))
 
         if not os.path.exists(self.gs_file):
-            raise Exception(red(f"[ERROR] Genesis file not found - '{gs_file}'"))
+            raise Exception(f"[red][ERROR] Genesis file not found - '{self.gs_file}'")
 
         with open(gs_file, "rb") as genesis_fd:
             fd_data = genesis_fd.read()
@@ -477,7 +520,6 @@ class ControlChain(ConnectSock):
             "json": (None, json.dumps(config_payload)),
             "genesisZip": (os.path.basename(gs_file), fd_data)
         }
-
         res = self.request(url=f"/chain", payload={}, method="POST", files=files)
         self.guess_cid()
         debug(res.status_code)
@@ -563,7 +605,13 @@ class ControlChain(ConnectSock):
 
     def _append_compare_blockheight(self):
         if self.last_call_count % 20 == 0:
-            self.last_blockheight_number = self._get_last_block_height()
+            rpc_nid = self.get_network_id_with_compare_endpoint()
+
+            if self.nid == rpc_nid:
+                self.last_blockheight_number = self._get_last_block_height()
+            else:
+                pawn.console.log(f"[orange1][WARN] NID mismatch: local={self.nid}, endpoint={rpc_nid}[/orange1]")
+                self.last_blockheight_number = 0
             self.last_call_count = 0
 
         if self.state:
@@ -571,7 +619,7 @@ class ControlChain(ConnectSock):
             self.state['last_height'] = self.last_blockheight_number
             if self._tps_stack.mean() > 3:
                 try:
-                    self.state['left_time'] = TimeCalculator(self.state['left_height'] / self._tps_stack.mean())
+                    self.state['left_time'] = str(TimeCalculator(self.state['left_height'] / self._tps_stack.mean()))
                 except Exception as e:
                     pawn.console.log(f"[red] exception - {e}")
             else:
@@ -594,9 +642,11 @@ class ControlChain(ConnectSock):
         else:
             url = f"/chain"
         res = self.request(url=url, payload=payload, method="GET", return_dict=True)
-
         if res.status_code != 200:
             self.logging(f"view_chain res.status_code={res.status_code}, res = {res.text}")
+
+        self.nid = res.get('nid')
+
         if hasattr(res, 'json'):
             self.state = res.json
             try:

@@ -8,6 +8,8 @@ import socket_request
 
 import json
 from devtools import debug
+
+
 try:
     from .__version__ import __version__
 except:
@@ -16,6 +18,9 @@ import time
 
 import os
 from pawnlib.utils import NetworkInfo
+from pawnlib.config import pawn
+from .utils.utils import dict_to_line
+# from pawnlib.typing import dict_to_line
 
 is_docker = os.environ.get("IS_DOCKER", False)
 AVAIL_PLATFORM = ["icon", "havah"]
@@ -23,21 +28,20 @@ AVAIL_PLATFORM = ["icon", "havah"]
 
 def get_base_dir(args=None):
     if args and args.base_dir:
-        base_dir = args.base_dir
-    elif socket_request.str2bool(is_docker):
-        base_dir = "/goloop"
+        return args.base_dir
+    if socket_request.str2bool(is_docker):
+        return "/goloop"
     else:
         guess_sock = "data/cli.sock"
-        if socket_request.ConnectSock(unix_socket=guess_sock)._health_check():
+        if socket_request.ConnectSock(unix_socket=guess_sock).health_check():
             return "."
 
-        guess_base_dir = ["/app/icon2-node", "/app/goloop", "/app/havah-node", "/app/havah_node_docker"]
+        guess_base_dir = ["/app/icon2-node", "/app/icon2-docker",  "/app/goloop", "/app/havah-node", "/app/havah_node_docker"]
 
-        base_dir = guess_base_dir[0]
         for dir_name in guess_base_dir:
             if os.path.exists(dir_name):
-                base_dir = dir_name
-    return base_dir
+                return dir_name
+        return "."
 
 
 def get_parser():
@@ -48,7 +52,7 @@ def get_parser():
     parser.add_argument(
         'command',
         choices=['start', 'stop', 'reset', 'leave', 'view_chain', 'view_system_config', 'join', 'backup', 'backup_list', 'restore',
-                 'chain_config', 'system_config', 'ls', 'prune', 'genesis', 'rpc_call'],
+                 'chain_config', 'system_config', 'ls', 'prune', 'genesis', 'rpc_call', 'get_block_hash'],
         help='')
 
     parser.add_argument('-d', '--debug', action='store_true', help=f'debug mode. (default: False)', default=False)
@@ -86,9 +90,10 @@ def get_parser():
     return parser.parse_args()
 
 
-def parse_environment():
-    platform = os.getenv('PLATFORM', None)
-    service = os.getenv('SERVICE', None)
+def parse_environment(args):
+    platform = os.getenv('PLATFORM', "icon")
+    service = os.getenv('SERVICE', "MainNet")
+    network_info = None
     if platform:
         if platform not in AVAIL_PLATFORM:
             sys_exit(f"Invalid platform env, input={platform}, allows={AVAIL_PLATFORM}")
@@ -97,6 +102,7 @@ def parse_environment():
         platform = pconf().args.platform
 
     if platform and service:
+
         service = service.lower()
         if service == "veganet":
             service = "vega"
@@ -105,7 +111,11 @@ def parse_environment():
         network_info = NetworkInfo(platform=platform, network_name=service)
         if not pconf().args.endpoint:
             pconf().args.endpoint = network_info.network_api
-            pawn.console.log(f"Set endpoint, service={service}")
+            # pawn.console.log(f"Set endpoint, service={service}, {network_info.network_api}")
+        if args.compare:
+            pawn.console.log(f"Platform={platform}, Service={service}, endpoint={network_info.network_api}")
+
+    return network_info
 
 
 def print_banner(args):
@@ -130,15 +140,14 @@ def check_required(command=None):
     required_params = {
         "payload": ["import_icon", "chain_config", "system_config", "rpc_call"],
         "inspect": ["view_chain", "view_system_config"],
-        "seedAddress": ["join"],
+        # "seedAddress": ["join"],
         "role": ["join"],
         "channel": ["join"],
         "platform": ["join"],
         "compare": ["view_chain"],
         "gs_file": ["join"],
-        "blockheight": ["prune", "reset"],
+        "blockheight": ["prune", "reset", "get_block_hash"],
         "restore_name": ["restore"],
-
     }
 
     required_keys = []
@@ -150,13 +159,13 @@ def check_required(command=None):
     return required_keys
 
 
-def get_unixsocket(args):
+def get_unixsocket():
     if os.environ.get("GOLOOP_NODE_SOCK") and os.path.isfile(os.environ.get("GOLOOP_NODE_SOCK")):
         return os.environ.get("GOLOOP_NODE_SOCK")
 
 
 def run_function(func, required_keys, args):
-    payload = None
+    payload = {}
     gs_file = None
     seedAddress = None
     result = None
@@ -179,10 +188,12 @@ def run_function(func, required_keys, args):
 
     if args.seedAddress:
         seedAddress = args.seedAddress.split(",")
-        if args.gs_file:
-            gs_file = args.gs_file
-        else:
-            gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
+        payload.update({"seedAddress": seedAddress})
+
+    if args.gs_file:
+        gs_file = args.gs_file
+    else:
+        gs_file = f"{get_base_dir(args)}/config/icon_genesis.zip"
 
     if args.platform:
         platform = args.platform
@@ -196,7 +207,7 @@ def run_function(func, required_keys, args):
     if args.command == "view_chain":
         compare = args.compare
 
-    must_have_params_command = ["prune", "restore", "reset", "chain_config", "system_config"]
+    must_have_params_command = ["prune", "restore", "reset", "chain_config", "system_config", "get_block_hash"]
 
     if required_keys:
         arguments = {}
@@ -216,10 +227,13 @@ def run_function(func, required_keys, args):
             debug(required_arg)
             debug(arguments)
 
+
         if payload and func.__name__ in ['join']:
             arguments.update(payload)
 
         if len(arguments) > 0:
+            if func.__name__ != "view_chain":
+                pawn.console.log(func.__name__, arguments)
             result = func(**arguments)
         else:
             result = func()
@@ -230,14 +244,11 @@ def run_function(func, required_keys, args):
 
 def main():
     args = get_parser()
-    pawn.set(args=args)
+    cc = None
+
+    pawn.set(args=args, PAWN_LINE=False)
 
     view_table_format = ["backup_list"]
-
-    try:
-        parse_environment()
-    except Exception as e:
-        pawn.console.debug(f'[yellow] {e}')
 
     try:
         if args.debug:
@@ -253,6 +264,11 @@ def main():
             args.payload = {"inspect": args.inspect}
         if args.command == "import_icon" and args.payload is None:
             args.payload = open(f"{args.base_dir}/config/import_config.json")
+
+        try:
+            parse_environment(args)
+        except Exception as e:
+            pawn.console.debug(f'[yellow] {e}')
 
         cc = socket_request.ControlChain(
             unix_socket=args.unixsocket,
@@ -288,7 +304,6 @@ def main():
                             text_color = "RED"
                         else:
                             text_color = "GREEN"
-
                         if result.json:
                             result_text = result.json
                         elif result.text:
@@ -297,7 +312,11 @@ def main():
                         if args.command in view_table_format:
                             socket_request.print_table(title=f"{args.command} result", source_dict=result_text)
                         else:
-                            socket_request.color_print(f"{result_text}", text_color)
+                            if isinstance(result_text, dict):
+                                pawn.console.log(dict_to_line(result_text, quotes=True, end_separator=", "))
+                            else:
+                                pawn.console.log(result_text)
+
                         if text_color == "RED":
                             socket_request.color_print(str(cc.get_state()))
                     else:
@@ -306,7 +325,11 @@ def main():
             else:
                 print(cc.view_chain())
                 print(result)
-                socket_request.color_print(f"[ERROR] {args.command}, {result.text}", "FAIL")
+                if getattr(result, "text", None):
+                    result_text = result.text
+                else:
+                    result_text = "result is null"
+                socket_request.color_print(f"[ERROR] {args.command}, {result_text}", "FAIL")
 
             if args.forever is False:
                 sys.exit()
@@ -317,7 +340,8 @@ def main():
         if pawn.get("PAWN_DEBUG"):
             pawn.console.print_exception(show_locals=pawn.get("PAWN_DEBUG", False), width=160)
         else:
-            pawn.console.log(cc.state)
+            if cc and getattr(cc, "state"):
+                pawn.console.log(cc.state)
             pawn.console.log(f"[red]Exception occurred[/red]: {e}")
 
 
