@@ -645,11 +645,10 @@ class ControlChain(ConnectSock):
         if res.status_code != 200:
             self.logging(f"view_chain res.status_code={res.status_code}, res = {res.text}")
 
-        self.nid = res.get('nid')
-
         if hasattr(res, 'json'):
             self.state = res.json
             try:
+                self.nid = res.get('nid')
                 self.get_tps()
                 res.set_dict(self.state)
                 if compare and self.endpoint:
