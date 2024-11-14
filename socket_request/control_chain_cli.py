@@ -19,7 +19,7 @@ import time
 import os
 from pawnlib.utils import NetworkInfo
 from pawnlib.config import pawn
-from .utils.utils import dict_to_line
+from .utils.utils import dict_to_line, calculate_reset_percentage
 # from pawnlib.typing import dict_to_line
 
 is_docker = os.environ.get("IS_DOCKER", False)
@@ -313,6 +313,11 @@ def main():
                             socket_request.print_table(title=f"{args.command} result", source_dict=result_text)
                         else:
                             if isinstance(result_text, dict):
+                                if "reset" in result_text.get('state'):
+                                    _state = calculate_reset_percentage(result_text['state'])
+                                    result_text['progress'] = f"{_state.get('progress')}%"
+
+
                                 pawn.console.log(dict_to_line(result_text, quotes=True, end_separator=", "))
                             else:
                                 pawn.console.log(result_text)
