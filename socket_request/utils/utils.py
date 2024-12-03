@@ -524,3 +524,27 @@ def calculate_reset_percentage(data):
     else:
         raise ValueError("Cant parsing data")
 
+
+def calculate_pruning_percentage(data):
+    match = re.search(r'pruning (\d+)/(\d+)\s+resolved=(\d+) unresolved=(\d+)', data)
+
+    if match:
+        current = int(match.group(1))
+        total = int(match.group(2))
+        resolved = int(match.group(3))
+        unresolved = int(match.group(4))
+
+        progress_percentage = (current / total) * 100
+        resolve_progress_percentage = (resolved / total) * 100
+
+        return {
+            "current": current,
+            "total": total,
+            "resolved": resolved,
+            "unresolved": unresolved,
+            "resolve_progress_percentage": round(resolve_progress_percentage, 2),
+            "progress": round(progress_percentage, 2),
+        }
+    else:
+        raise ValueError("Cant parsing data")
+
